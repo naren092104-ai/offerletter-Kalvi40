@@ -1,0 +1,6 @@
+{
+  "name": "Kalvi40 — Offer Letter & Bulk Email Automation",
+  "description": "Enterprise offer letter generation and bulk email automation platform for BumbleB Trust – Kalvi40 Teaching Coordinators.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

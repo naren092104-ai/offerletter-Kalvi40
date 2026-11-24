@@ -1,0 +1,24 @@
+name = "kalvi40-offer-worker"
+main = "worker/index.ts"
+compatibility_date = "2025-10-01"
+
+[vars]
+SUPABASE_STORAGE_BUCKET = "offer-letters"
+
+# Uncomment after creating Cloudflare Queue:
+# `npx wrangler queues create kalvi40-email-queue`
+# [[queues.producers]]
+# queue = "kalvi40-email-queue"
+# binding = "EMAIL_QUEUE"
+#
+# [[queues.consumers]]
+# queue = "kalvi40-email-queue"
+# max_batch_size = 5
+# max_batch_timeout = 10
+# max_retries = 3
+
+# Required Wrangler secrets/environment:
+# - SUPABASE_URL
+# - SUPABASE_PUBLISHABLE_KEY
+# - SUPABASE_SECRET_KEY (privileged Worker operations only)
+# SUPABASE_SERVICE_ROLE_KEY is retained only for legacy integrations.
