@@ -43,14 +43,15 @@ wrangler deploy
 
 ### B. Cloudflare Pages (Frontend)
 1. Connect repository to Cloudflare Pages.
-2. Set the project root directory to `/` (repository root).
-3. Use the Vite framework preset, build command `npm run build`, and build output directory `dist` (not `/`, `src`, or the repository root).
-4. Set environment variable `VITE_API_BASE_URL` to the URL of the deployed API service when it is on a different origin.
-5. Redeploy after changing these settings. The published root `index.html` must reference a hashed `/assets/index-*.js` bundle; it must not reference `/src/main.tsx`.
+2. Set the project root directory to `/` (repository root), build command to `npm run build`, and build output directory to `dist` (not `/`, `src`, or the repository root).
+3. Set environment variable `VITE_API_BASE_URL` to the URL of the deployed API service when it is on a different origin.
+4. Redeploy after changing these settings. The published root `index.html` must reference a hashed `/assets/index-*.js` bundle; it must not reference `/src/main.tsx`.
 
-> **Troubleshooting:** If the browser requests `/src/main.tsx` and receives `application/octet-stream`, Pages is publishing the source repository instead of Vite's production output. TSX source is not browser-executable JavaScript. Rebuild with `npm run build` and publish only `dist`; do not try to solve this by changing the MIME header for `.tsx` files.
+The Vite build writes a Cloudflare Pages `dist/_headers` file containing exact-path `Content-Type` overrides for every emitted `.js`/`.mjs` module and `.css` stylesheet. The existing root `wrangler.toml` is intentionally for the API Worker (`main = "worker/index.ts"`); do not add `pages_build_output_dir` to it or use `wrangler deploy` for the frontend, because that would mix the Pages configuration into the API Worker deployment.
 
-For a manual preview deployment, build with `npm run build` and upload the generated `dist` directory using `wrangler pages deploy dist --project-name offerletter-kalvi40 --branch mime-fix-preview`. Use the intended production branch/deployment process only after verifying the preview assets and API URL.
+> **Troubleshooting:** If the browser requests `/src/main.tsx` and receives `application/octet-stream`, Pages is publishing the source repository instead of Vite's production output. TSX source is not browser-executable JavaScript. Correct the Pages output directory to `dist`, rebuild, and redeploy; do not try to serve `.tsx` as JavaScript.
+
+For a manual preview deployment, run `npm run deploy:pages:preview`. This builds the app and uploads only `dist` to the `mime-fix-preview` branch. Verify the deployed HTML points at `/assets/index-*.js` and inspect the bundle response headers (`application/javascript` for JS and `text/css` for CSS). Use the Pages project's configured production branch for production deployment; leave the Worker deployment command and `wrangler.toml` unchanged.
 
 ---
 
