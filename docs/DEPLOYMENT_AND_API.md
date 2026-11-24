@@ -3,18 +3,18 @@
 ## 1. Architecture Summary
 - **Frontend**: React + TypeScript + Vite + Tailwind CSS (deployable to **Cloudflare Pages**)
 - **Backend**:
-  - **Local / Container / Node Runtime**: Express + SQLite (`node:sqlite`) in `server.ts` with persistent background job queue (`server/queue.ts`) and pure-JS `pdf-lib` PDF generation (`server/pdfGenerator.ts`).
-  - **Serverless Production**: **Cloudflare Workers** (`worker/index.ts` + `wrangler.toml`) backed by **Supabase PostgreSQL** (`supabase/migrations/001_initial_schema.sql`) and **Supabase Storage** (`offer-letters` bucket).
+   - **Local / Container / Node Runtime**: Express API (`server.ts`) backed by the existing **Supabase PostgreSQL** project through the server-only client in `server/supabase.ts`. Candidate, admin, settings, template, campaign, send-history, and audit-log reads/writes go to Supabase. The local filesystem is used for generated PDFs and signature uploads; PDFs are also uploaded to Supabase Storage when configured.
+   - **Legacy only**: `server/db.ts` and `server/routes.ts` contain the former SQLite implementation and are not mounted by `server.ts`. SQLite export scripts remain for archival/reference only; they are not part of active runtime data flow.
+   - **Cloudflare Workers**: `worker/index.ts` is a separate deployment stub and is not the local Express API entry point.
 - **Email Delivery**: **Brevo Transactional Email API** (`https://api.brevo.com/v3/smtp/email`) or any compatible SMTP relay (`smtp-relay.brevo.com:587`).
 
 ---
 
 ## 2. Supabase Setup (Free Tier)
-1. Create a free Supabase project at https://supabase.com.
-2. Open **SQL Editor** and execute `/supabase/migrations/001_initial_schema.sql`.
-3. Verify the private storage bucket `offer-letters` was created under **Storage**.
-4. Copy `Project URL` (`SUPABASE_URL`), `anon public` key (`SUPABASE_ANON_KEY`), and `service_role` secret key (`SUPABASE_SERVICE_ROLE_KEY`).
-   > **Security**: Never expose `SUPABASE_SERVICE_ROLE_KEY` in frontend code or `VITE_*` variables.
+1. Link the already-existing Supabase project; do not re-run the initial schema migration against a populated project.
+2. Verify the private storage bucket `offer-letters` exists under **Storage**.
+3. Configure `SUPABASE_URL` and a server-only `SUPABASE_SECRET_KEY` or `SUPABASE_SERVICE_ROLE_KEY` for the Express runtime. Never expose the privileged key in frontend code or `VITE_*` variables.
+4. If the privileged role lacks table/sequence grants, apply the narrow grant migration `/supabase/migrations/003_grant_backend_service_role.sql`. It leaves RLS enabled and grants no access to `anon` or `authenticated`.
 
 ---
 
@@ -43,9 +43,14 @@ wrangler deploy
 
 ### B. Cloudflare Pages (Frontend)
 1. Connect repository to Cloudflare Pages.
-2. Build command: `npm run build`
-3. Build output directory: `dist`
-4. Set environment variable `VITE_API_BASE_URL` pointing to your deployed Worker URL (if hosted on a separate subdomain).
+2. Set the project root directory to `/` (repository root).
+3. Use the Vite framework preset, build command `npm run build`, and build output directory `dist` (not `/`, `src`, or the repository root).
+4. Set environment variable `VITE_API_BASE_URL` to the URL of the deployed API service when it is on a different origin.
+5. Redeploy after changing these settings. The published root `index.html` must reference a hashed `/assets/index-*.js` bundle; it must not reference `/src/main.tsx`.
+
+> **Troubleshooting:** If the browser requests `/src/main.tsx` and receives `application/octet-stream`, Pages is publishing the source repository instead of Vite's production output. TSX source is not browser-executable JavaScript. Rebuild with `npm run build` and publish only `dist`; do not try to solve this by changing the MIME header for `.tsx` files.
+
+For a manual preview deployment, build with `npm run build` and upload the generated `dist` directory using `wrangler pages deploy dist --project-name offerletter-kalvi40 --branch mime-fix-preview`. Use the intended production branch/deployment process only after verifying the preview assets and API URL.
 
 ---
 

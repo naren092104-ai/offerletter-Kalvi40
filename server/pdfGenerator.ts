@@ -2,8 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
-import { createClient } from '@supabase/supabase-js';
-import { db, getSetting, pdfStorageDir, uploadsStorageDir } from './db.ts';
+import { getSupabaseServerClient } from './supabase.ts';
+import { getSetting, requireSupabase, refreshSupabaseSettings } from './store.ts';
+import { pdfStorageDir, uploadsStorageDir } from './storage.ts';
 import {
   DEFAULT_OFFER_LETTER_TEMPLATE,
   formatDateDDMMYYYY,
@@ -359,6 +360,7 @@ export async function buildOfferLetterPdfBuffer(
   >,
   templateOverride?: Partial<OfferLetterTemplate>
 ): Promise<{ buffer: Buffer; filename: string }> {
+  await refreshSupabaseSettings();
   const pdfDoc = await PDFDocument.create();
   const filename = sanitizeOfferFilename(candidate.candidate_name);
   const formattedDate = formatDateDDMMYYYY(candidate.joining_date);
@@ -777,28 +779,24 @@ export async function generateOfferLetterPdf(candidate: Candidate): Promise<{
   const filePath = path.join(pdfStorageDir, filename);
   fs.writeFileSync(filePath, buffer);
 
-  db.prepare(`
-    UPDATE candidates
-    SET offer_generated = 1,
-        offer_generated_at = datetime('now'),
-        offer_filename = ?,
-        updated_at = datetime('now')
-    WHERE id = ?
-  `).run(filename, candidate.id);
+  const { error: metadataError } = await requireSupabase()
+    .from('candidates')
+    .update({ offer_generated: true, offer_generated_at: new Date().toISOString(), offer_filename: filename, updated_at: new Date().toISOString() })
+    .eq('id', candidate.id);
+  if (metadataError) throw new Error(`PDF was created locally but Supabase metadata could not be updated: ${metadataError.message}`);
 
   // Optional Supabase Storage upload when configured
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
   const supabaseBucket = process.env.SUPABASE_STORAGE_BUCKET || 'offer-letters';
-  if (supabaseUrl && supabaseKey && !supabaseUrl.includes('your-project-ref')) {
+  const supabase = getSupabaseServerClient();
+  if (supabase) {
     try {
-      const supabase = createClient(supabaseUrl, supabaseKey);
-      await supabase.storage.from(supabaseBucket).upload(filename, buffer, {
+      const { error } = await supabase.storage.from(supabaseBucket).upload(filename, buffer, {
         contentType: 'application/pdf',
         upsert: true,
       });
+      if (error) console.warn('Supabase Storage upload failed:', error.message);
     } catch (err) {
-      console.warn('Optional Supabase Storage upload skipped:', err instanceof Error ? err.message : String(err));
+      console.warn('Supabase Storage upload failed:', err instanceof Error ? err.message : 'unknown error');
     }
   }
 

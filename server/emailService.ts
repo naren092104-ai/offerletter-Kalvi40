@@ -1,5 +1,5 @@
 import nodemailer from 'nodemailer';
-import { getSetting } from './db.ts';
+import { getSetting, getRuntimeSecret } from './store.ts';
 import type { EmailConfigPublic } from '../src/types/kalvi40.ts';
 
 export interface SendEmailPayload {
@@ -62,13 +62,13 @@ export function isValidSmtpHost(host: string): boolean {
 export function isProviderConfigured(): boolean {
   const host = getSetting('smtp_host', '').trim();
   const user = getSetting('smtp_user', '').trim();
-  const pass = getSetting('smtp_pass', '').trim();
+  const pass = (getRuntimeSecret('smtp_pass') || process.env.SMTP_PASS || '').trim();
   const sender = getSetting('sender_email', '').trim();
   return Boolean(isValidSmtpHost(host) && user && pass && sender);
 }
 
 export function getPublicEmailConfig(): EmailConfigPublic {
-  const smtpPass = getSetting('smtp_pass', '');
+  const smtpPass = getRuntimeSecret('smtp_pass') || process.env.SMTP_PASS || '';
 
   return {
     email_provider: 'smtp',
@@ -95,7 +95,7 @@ export async function verifyEmailProviderConnection(): Promise<{
   const host = getSetting('smtp_host', '').trim();
   const port = Number(getSetting('smtp_port', '587')) || 587;
   const user = getSetting('smtp_user', '').trim();
-  const pass = normalizeSmtpPassword(host, getSetting('smtp_pass', ''));
+  const pass = normalizeSmtpPassword(host, getRuntimeSecret('smtp_pass') || process.env.SMTP_PASS || '');
   const secure = getSetting('smtp_secure', 'false') === 'true';
 
   if (!host || !user || !pass) {
@@ -153,7 +153,7 @@ export async function sendTransactionalOfferEmail(payload: SendEmailPayload): Pr
   const host = getSetting('smtp_host', '').trim();
   const port = Number(getSetting('smtp_port', '587')) || 587;
   const user = getSetting('smtp_user', '').trim();
-  const pass = normalizeSmtpPassword(host, getSetting('smtp_pass', ''));
+  const pass = normalizeSmtpPassword(host, getRuntimeSecret('smtp_pass') || process.env.SMTP_PASS || '');
   const secure = getSetting('smtp_secure', 'false') === 'true';
 
   if (!host || !user || !pass || !senderEmail) {

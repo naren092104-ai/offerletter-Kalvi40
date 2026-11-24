@@ -3,10 +3,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
-import { createApiRouter } from './server/routes.ts';
+import { createApiRouter } from './server/routes-supabase.ts';
 import { triggerQueueWorker } from './server/queue.ts';
+import { initializeSupabaseStore } from './server/store.ts';
 
 async function startServer(): Promise<void> {
+  await initializeSupabaseStore();
   const app = express();
   const PORT = Number(process.env.PORT || 3000);
   const isProd = process.env.NODE_ENV === 'production' && fs.existsSync(path.resolve(process.cwd(), 'dist/index.html'));

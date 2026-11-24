@@ -33,8 +33,10 @@ const EMPTY_FORM = {
   district: '',
   phone: '',
   email: '',
-  joining_date: '21.10.2026',
+  joining_date: new Date().toLocaleDateString('en-GB').replaceAll('/', '.'),
 };
+
+const TODAY_DDMMYYYY = new Date().toLocaleDateString('en-GB').replaceAll('/', '.');
 
 export function CandidatesPage({ openAddOnMount = false, onNavigate }: CandidatesPageProps) {
   const { toast } = useToast();
@@ -647,14 +649,18 @@ export function CandidatesPage({ openAddOnMount = false, onNavigate }: Candidate
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-[#10243A] mb-1">Joining Date (DD.MM.YYYY)</label>
+                  <label className="block text-xs font-semibold text-[#10243A] mb-1">Joining Date</label>
                   <input
-                    type="text"
+                    type="date"
                     required
-                    value={formState.joining_date}
-                    onChange={(e) => setFormState({ ...formState, joining_date: e.target.value })}
-                    placeholder="21.10.2026"
-                    className="w-full px-3 py-2 text-sm font-mono border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
+                    value={/^\d{2}\.\d{2}\.\d{4}$/.test(formState.joining_date)
+                      ? `${formState.joining_date.slice(6, 10)}-${formState.joining_date.slice(3, 5)}-${formState.joining_date.slice(0, 2)}`
+                      : formState.joining_date}
+                    onChange={(e) => {
+                      const [year, month, day] = e.target.value.split('-');
+                      setFormState({ ...formState, joining_date: year && month && day ? `${day}.${month}.${year}` : '' });
+                    }}
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
                   />
                 </div>
               </div>

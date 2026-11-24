@@ -23,6 +23,16 @@ import {
 import { triggerQueueWorker } from './queue.ts';
 import { getMasterTemplate, verifyCandidateForSending } from './verification.ts';
 import {
+  deleteCcRecipientFromSupabase,
+  deleteCandidatesFromSupabase,
+  syncCandidateToSupabase,
+  syncCandidatesToSupabase,
+  syncCcRecipientToSupabase,
+  syncAdminToSupabase,
+  syncMasterEmailTemplateToSupabase,
+  syncSettingsToSupabase,
+} from './supabase.ts';
+import {
   DEFAULT_MASTER_BODY,
   DEFAULT_MASTER_SUBJECT,
   DEFAULT_OFFER_LETTER_TEMPLATE,
@@ -39,6 +49,11 @@ import {
 
 interface AuthRequest extends Request {
   admin?: AdminUser;
+}
+
+async function syncLocalSettingsToSupabase(): Promise<{ ok: boolean; error?: string }> {
+  const settings = db.prepare('SELECT key, value FROM settings').all() as Array<{ key: string; value: string }>;
+  return syncSettingsToSupabase(settings);
 }
 
 const JWT_SECRET = process.env.JWT_SECRET || 'kalvi40-bumbleb-enterprise-secret-2026';
@@ -207,7 +222,7 @@ export function createApiRouter(): express.Router {
     });
   });
 
-  router.post('/auth/reset-password', (req, res) => {
+  router.post('/auth/reset-password', async (req, res) => {
     const token = String(req.body?.token || '').trim();
     const newPassword = String(req.body?.newPassword || '');
 
@@ -229,7 +244,14 @@ export function createApiRouter(): express.Router {
     db.prepare(`UPDATE admins SET password_hash = ?, updated_at = datetime('now') WHERE id = ?`).run(hash, row.admin_id);
     db.prepare(`UPDATE password_resets SET used_at = datetime('now') WHERE id = ?`).run(row.id);
 
-    const admin = db.prepare('SELECT email FROM admins WHERE id = ?').get(row.admin_id) as { email: string } | undefined;
+    const admin = db.prepare('SELECT * FROM admins WHERE id = ?').get(row.admin_id) as (AdminUser & { password_hash: string }) | undefined;
+    const syncResult = admin
+      ? await syncAdminToSupabase({ ...admin, currentEmail: admin.email })
+      : { ok: false, error: 'Administrator record could not be reloaded.' };
+    if (!syncResult.ok) {
+      res.status(503).json({ error: `Password was reset locally, but Supabase synchronization failed: ${syncResult.error}` });
+      return;
+    }
     logActivity({
       adminId: row.admin_id,
       adminEmail: admin?.email || 'unknown',
@@ -252,7 +274,7 @@ export function createApiRouter(): express.Router {
     res.json({ admin: req.admin });
   });
 
-  router.put('/auth/profile', (req: AuthRequest, res) => {
+  router.put('/auth/profile', async (req: AuthRequest, res) => {
     const admin = req.admin!;
     const name = String(req.body?.name || '').trim();
     const designation = String(req.body?.designation || '').trim();
@@ -277,8 +299,18 @@ export function createApiRouter(): express.Router {
     `).run(name, designation, phone, email, admin.id);
 
     const updated = db
-      .prepare('SELECT id, name, email, role, designation, phone, last_login_at, created_at FROM admins WHERE id = ?')
-      .get(admin.id) as unknown as AdminUser;
+      .prepare('SELECT * FROM admins WHERE id = ?')
+      .get(admin.id) as (AdminUser & { password_hash: string }) | undefined;
+    if (!updated) {
+      res.status(500).json({ error: 'Updated administrator record could not be reloaded.' });
+      return;
+    }
+
+    const syncResult = await syncAdminToSupabase({ ...updated, currentEmail: admin.email });
+    if (!syncResult.ok) {
+      res.status(503).json({ error: `Profile was saved locally, but Supabase synchronization failed: ${syncResult.error}` });
+      return;
+    }
 
     logActivity({
       adminId: admin.id,
@@ -290,10 +322,20 @@ export function createApiRouter(): express.Router {
       ipAddress: getClientIp(req),
     });
 
-    res.json({ admin: updated });
+    const publicAdmin: AdminUser = {
+      id: updated!.id,
+      name: updated!.name,
+      email: updated!.email,
+      role: updated!.role,
+      designation: updated!.designation,
+      phone: updated!.phone,
+      last_login_at: updated!.last_login_at,
+      created_at: updated!.created_at,
+    };
+    res.json({ admin: publicAdmin });
   });
 
-  router.put('/auth/password', (req: AuthRequest, res) => {
+  router.put('/auth/password', async (req: AuthRequest, res) => {
     const admin = req.admin!;
     const currentPassword = String(req.body?.currentPassword || '');
     const newPassword = String(req.body?.newPassword || '');
@@ -311,6 +353,13 @@ export function createApiRouter(): express.Router {
 
     const newHash = bcrypt.hashSync(newPassword, 10);
     db.prepare(`UPDATE admins SET password_hash = ?, updated_at = datetime('now') WHERE id = ?`).run(newHash, admin.id);
+
+    const updated = db.prepare('SELECT * FROM admins WHERE id = ?').get(admin.id) as unknown as AdminUser & { password_hash: string };
+    const syncResult = await syncAdminToSupabase({ ...updated, currentEmail: admin.email });
+    if (!syncResult.ok) {
+      res.status(503).json({ error: `Password was changed locally, but Supabase synchronization failed: ${syncResult.error}` });
+      return;
+    }
 
     logActivity({
       adminId: admin.id,
@@ -613,7 +662,7 @@ export function createApiRouter(): express.Router {
     res.json({ candidate });
   });
 
-  router.post('/candidates', (req: AuthRequest, res) => {
+  router.post('/candidates', async (req: AuthRequest, res) => {
     const candidate_name = String(req.body?.candidate_name || '').trim();
     const school_name = normalizeSchoolName(String(req.body?.school_name || ''));
     const location = String(req.body?.location || '').trim();
@@ -656,6 +705,12 @@ export function createApiRouter(): express.Router {
 
     const created = db.prepare('SELECT * FROM candidates WHERE id = ?').get(info.lastInsertRowid) as unknown as Candidate;
 
+    const syncResult = await syncCandidateToSupabase(created);
+    if (!syncResult.ok) {
+      res.status(503).json({ error: `Candidate was saved locally, but Supabase synchronization failed: ${syncResult.error}` });
+      return;
+    }
+
     logActivity({
       adminId: req.admin!.id,
       adminEmail: req.admin!.email,
@@ -669,7 +724,7 @@ export function createApiRouter(): express.Router {
     res.status(201).json({ candidate: created });
   });
 
-  router.put('/candidates/:id', (req: AuthRequest, res) => {
+  router.put('/candidates/:id', async (req: AuthRequest, res) => {
     const id = Number(req.params.id);
     const existing = db.prepare('SELECT * FROM candidates WHERE id = ?').get(id) as Candidate | undefined;
     if (!existing) {
@@ -727,6 +782,12 @@ export function createApiRouter(): express.Router {
 
     const updated = db.prepare('SELECT * FROM candidates WHERE id = ?').get(id) as unknown as Candidate;
 
+    const syncResult = await syncCandidateToSupabase(updated, existing.email);
+    if (!syncResult.ok) {
+      res.status(503).json({ error: `Candidate was updated locally, but Supabase synchronization failed: ${syncResult.error}` });
+      return;
+    }
+
     logActivity({
       adminId: req.admin!.id,
       adminEmail: req.admin!.email,
@@ -765,6 +826,12 @@ export function createApiRouter(): express.Router {
     const pdf = await generateOfferLetterPdf(updated);
     const refreshed = db.prepare('SELECT * FROM candidates WHERE id = ?').get(id) as unknown as Candidate;
 
+    const syncResult = await syncCandidateToSupabase(refreshed);
+    if (!syncResult.ok) {
+      res.status(503).json({ error: `Offer content was saved locally, but Supabase synchronization failed: ${syncResult.error}` });
+      return;
+    }
+
     logActivity({
       adminId: req.admin!.id,
       adminEmail: req.admin!.email,
@@ -783,11 +850,17 @@ export function createApiRouter(): express.Router {
     });
   });
 
-  router.delete('/candidates/:id', (req: AuthRequest, res) => {
+  router.delete('/candidates/:id', async (req: AuthRequest, res) => {
     const id = Number(req.params.id);
     const existing = db.prepare('SELECT * FROM candidates WHERE id = ?').get(id) as Candidate | undefined;
     if (!existing) {
       res.status(404).json({ error: 'Candidate not found.' });
+      return;
+    }
+
+    const syncResult = await deleteCandidatesFromSupabase([existing.email]);
+    if (!syncResult.ok) {
+      res.status(503).json({ error: `Candidate was not deleted because Supabase synchronization failed: ${syncResult.error}` });
       return;
     }
 
@@ -817,7 +890,7 @@ export function createApiRouter(): express.Router {
     res.json({ message: 'Candidate deleted.' });
   });
 
-  router.post('/candidates/bulk-delete', (req: AuthRequest, res) => {
+  router.post('/candidates/bulk-delete', async (req: AuthRequest, res) => {
     const deleteAll = Boolean(req.body?.deleteAll);
     const candidateIds = Array.isArray(req.body?.candidateIds) ? req.body.candidateIds.map(Number).filter(Boolean) : [];
 
@@ -828,12 +901,18 @@ export function createApiRouter(): express.Router {
 
     const targets = (
       deleteAll
-        ? db.prepare('SELECT id, candidate_name, offer_filename FROM candidates').all()
-        : db.prepare(`SELECT id, candidate_name, offer_filename FROM candidates WHERE id IN (${candidateIds.map(() => '?').join(',')})`).all(...candidateIds)
-    ) as Array<{ id: number; candidate_name: string; offer_filename: string | null }>;
+        ? db.prepare('SELECT id, candidate_name, email, offer_filename FROM candidates').all()
+        : db.prepare(`SELECT id, candidate_name, email, offer_filename FROM candidates WHERE id IN (${candidateIds.map(() => '?').join(',')})`).all(...candidateIds)
+      ) as Array<{ id: number; candidate_name: string; email: string; offer_filename: string | null }>;
 
     if (targets.length === 0) {
       res.json({ deletedCount: 0, message: 'No candidates to delete.' });
+      return;
+    }
+
+    const syncResult = await deleteCandidatesFromSupabase(targets.map((target) => target.email));
+    if (!syncResult.ok) {
+      res.status(503).json({ error: `Candidates were not deleted because Supabase synchronization failed: ${syncResult.error}` });
       return;
     }
 
@@ -869,7 +948,7 @@ export function createApiRouter(): express.Router {
     res.json({ deletedCount: targets.length, message: `Removed ${targets.length} candidate(s).` });
   });
 
-  router.post('/candidates/bulk-import', (req: AuthRequest, res) => {
+  router.post('/candidates/bulk-import', async (req: AuthRequest, res) => {
     const records = Array.isArray(req.body?.records) ? req.body.records : [];
     const skipDuplicates = req.body?.skipDuplicates !== false;
 
@@ -932,6 +1011,19 @@ export function createApiRouter(): express.Router {
     } catch (err) {
       db.exec('ROLLBACK');
       res.status(500).json({ error: err instanceof Error ? err.message : 'Bulk import transaction failed.' });
+      return;
+    }
+
+    const importedCandidates = insertedIds.map((id) =>
+      db.prepare('SELECT * FROM candidates WHERE id = ?').get(id) as Candidate | undefined
+    ).filter((candidate): candidate is Candidate => Boolean(candidate));
+    const syncResult = await syncCandidatesToSupabase(importedCandidates);
+    if (!syncResult.ok) {
+      res.status(503).json({
+        error: `${insertedIds.length} candidate record(s) were saved locally, but Supabase synchronization failed: ${syncResult.error}`,
+        importedCount: insertedIds.length,
+        skippedCount: skipped.length,
+      });
       return;
     }
 
@@ -1093,12 +1185,12 @@ export function createApiRouter(): express.Router {
   // =========================================================================
   // MASTER EMAIL TEMPLATE & CC MANAGEMENT
   // =========================================================================
-  router.get('/templates/master', (_req, res) => {
-    const template = getMasterTemplate();
+  router.get('/templates/master', async (_req, res) => {
+    const template = await getMasterTemplate();
     res.json({ template });
   });
 
-  router.put('/templates/master', (req: AuthRequest, res) => {
+  router.put('/templates/master', async (req: AuthRequest, res) => {
     const subject = String(req.body?.subject || '').trim();
     const body = String(req.body?.body || '').trim();
 
@@ -1107,14 +1199,19 @@ export function createApiRouter(): express.Router {
       return;
     }
 
-    const current = getMasterTemplate();
+    const current = await getMasterTemplate();
     db.prepare(`
       UPDATE email_templates
       SET subject = ?, body = ?, updated_by = ?, updated_at = datetime('now')
       WHERE id = ?
     `).run(subject, body, req.admin!.email, current.id);
 
-    const updated = getMasterTemplate();
+    const updated = await getMasterTemplate();
+    const syncResult = await syncMasterEmailTemplateToSupabase(updated);
+    if (!syncResult.ok) {
+      res.status(503).json({ error: `Template was saved locally, but Supabase synchronization failed: ${syncResult.error}` });
+      return;
+    }
 
     logActivity({
       adminId: req.admin!.id,
@@ -1129,15 +1226,20 @@ export function createApiRouter(): express.Router {
     res.json({ template: updated });
   });
 
-  router.post('/templates/master/reset', (req: AuthRequest, res) => {
-    const current = getMasterTemplate();
+  router.post('/templates/master/reset', async (req: AuthRequest, res) => {
+    const current = await getMasterTemplate();
     db.prepare(`
       UPDATE email_templates
       SET subject = ?, body = ?, updated_by = ?, updated_at = datetime('now')
       WHERE id = ?
     `).run(DEFAULT_MASTER_SUBJECT, DEFAULT_MASTER_BODY, req.admin!.email, current.id);
 
-    const updated = getMasterTemplate();
+    const updated = await getMasterTemplate();
+    const syncResult = await syncMasterEmailTemplateToSupabase(updated);
+    if (!syncResult.ok) {
+      res.status(503).json({ error: `Template was reset locally, but Supabase synchronization failed: ${syncResult.error}` });
+      return;
+    }
 
     logActivity({
       adminId: req.admin!.id,
@@ -1159,7 +1261,7 @@ export function createApiRouter(): express.Router {
     res.json({ template: getOfferLetterTemplate() });
   });
 
-  router.put('/templates/offer', (req: AuthRequest, res) => {
+  router.put('/templates/offer', async (req: AuthRequest, res) => {
     const body = req.body || {};
     const heading = String(body.heading ?? '').trim();
     const greeting = String(body.greeting ?? '').trim();
@@ -1210,6 +1312,12 @@ export function createApiRouter(): express.Router {
     // Mark PDFs stale so next preview, download, or send uses the updated offer content
     db.prepare(`UPDATE candidates SET offer_generated = 0, verification_status = 'unverified', updated_at = datetime('now')`).run();
 
+    const syncResult = await syncLocalSettingsToSupabase();
+    if (!syncResult.ok) {
+      res.status(503).json({ error: `Offer template was saved locally, but Supabase synchronization failed: ${syncResult.error}` });
+      return;
+    }
+
     logActivity({
       adminId: req.admin!.id,
       adminEmail: req.admin!.email,
@@ -1251,7 +1359,7 @@ export function createApiRouter(): express.Router {
     }
   });
 
-  router.post('/templates/offer/reset', (req: AuthRequest, res) => {
+  router.post('/templates/offer/reset', async (req: AuthRequest, res) => {
     setSetting('offer_header_name', DEFAULT_OFFER_LETTER_TEMPLATE.header_name);
     setSetting('offer_header_role', DEFAULT_OFFER_LETTER_TEMPLATE.header_role);
     setSetting('offer_brand_title', DEFAULT_OFFER_LETTER_TEMPLATE.brand_title);
@@ -1275,6 +1383,12 @@ export function createApiRouter(): express.Router {
 
     db.prepare(`UPDATE candidates SET offer_generated = 0, verification_status = 'unverified', updated_at = datetime('now')`).run();
 
+    const syncResult = await syncLocalSettingsToSupabase();
+    if (!syncResult.ok) {
+      res.status(503).json({ error: `Offer template reset locally, but Supabase synchronization failed: ${syncResult.error}` });
+      return;
+    }
+
     logActivity({
       adminId: req.admin!.id,
       adminEmail: req.admin!.email,
@@ -1292,7 +1406,7 @@ export function createApiRouter(): express.Router {
     res.json({ items });
   });
 
-  router.post('/cc', (req: AuthRequest, res) => {
+  router.post('/cc', async (req: AuthRequest, res) => {
     const email = String(req.body?.email || '').trim().toLowerCase();
     const label = String(req.body?.label || '').trim();
     const isDefault = req.body?.is_default === false ? 0 : 1;
@@ -1312,6 +1426,11 @@ export function createApiRouter(): express.Router {
       .prepare('INSERT INTO cc_recipients (email, label, enabled, is_default) VALUES (?, ?, 1, ?)')
       .run(email, label, isDefault);
     const created = db.prepare('SELECT * FROM cc_recipients WHERE id = ?').get(info.lastInsertRowid) as unknown as CcRecipient;
+    const syncResult = await syncCcRecipientToSupabase(created);
+    if (!syncResult.ok) {
+      res.status(503).json({ error: `CC recipient was saved locally, but Supabase synchronization failed: ${syncResult.error}` });
+      return;
+    }
 
     logActivity({
       adminId: req.admin!.id,
@@ -1326,7 +1445,7 @@ export function createApiRouter(): express.Router {
     res.status(201).json({ item: created });
   });
 
-  router.put('/cc/:id', (req: AuthRequest, res) => {
+  router.put('/cc/:id', async (req: AuthRequest, res) => {
     const id = Number(req.params.id);
     const existing = db.prepare('SELECT * FROM cc_recipients WHERE id = ?').get(id) as CcRecipient | undefined;
     if (!existing) {
@@ -1353,6 +1472,11 @@ export function createApiRouter(): express.Router {
     );
 
     const updated = db.prepare('SELECT * FROM cc_recipients WHERE id = ?').get(id) as unknown as CcRecipient;
+    const syncResult = await syncCcRecipientToSupabase({ ...updated, previousEmail: existing.email });
+    if (!syncResult.ok) {
+      res.status(503).json({ error: `CC recipient was updated locally, but Supabase synchronization failed: ${syncResult.error}` });
+      return;
+    }
 
     logActivity({
       adminId: req.admin!.id,
@@ -1367,11 +1491,17 @@ export function createApiRouter(): express.Router {
     res.json({ item: updated });
   });
 
-  router.delete('/cc/:id', (req: AuthRequest, res) => {
+  router.delete('/cc/:id', async (req: AuthRequest, res) => {
     const id = Number(req.params.id);
     const existing = db.prepare('SELECT * FROM cc_recipients WHERE id = ?').get(id) as CcRecipient | undefined;
     if (!existing) {
       res.status(404).json({ error: 'CC recipient not found.' });
+      return;
+    }
+
+    const syncResult = await deleteCcRecipientFromSupabase(existing.email);
+    if (!syncResult.ok) {
+      res.status(503).json({ error: `CC recipient was not deleted because Supabase synchronization failed: ${syncResult.error}` });
       return;
     }
 
@@ -1537,7 +1667,7 @@ export function createApiRouter(): express.Router {
       return;
     }
 
-    const master = getMasterTemplate();
+    const master = await getMasterTemplate();
     const subject = String(req.body?.subject || master.subject).trim();
     const body = String(req.body?.body || master.body).trim();
 
@@ -1891,7 +2021,7 @@ export function createApiRouter(): express.Router {
     });
   });
 
-  router.put('/settings/general', (req: AuthRequest, res) => {
+  router.put('/settings/general', async (req: AuthRequest, res) => {
     const allowedKeys = [
       'organization_name',
       'program_name',
@@ -1912,6 +2042,12 @@ export function createApiRouter(): express.Router {
     // Invalidate cached PDFs so letterhead/contract/stipend edits appear immediately
     db.prepare(`UPDATE candidates SET offer_generated = 0, updated_at = datetime('now')`).run();
 
+    const syncResult = await syncLocalSettingsToSupabase();
+    if (!syncResult.ok) {
+      res.status(503).json({ error: `Settings were saved locally, but Supabase synchronization failed: ${syncResult.error}` });
+      return;
+    }
+
     logActivity({
       adminId: req.admin!.id,
       adminEmail: req.admin!.email,
@@ -1931,7 +2067,7 @@ export function createApiRouter(): express.Router {
     res.json({ signature: getFounderSignatureInfo() });
   });
 
-  router.post('/settings/signature', (req: AuthRequest, res) => {
+  router.post('/settings/signature', async (req: AuthRequest, res) => {
     const rawDataUrl = typeof req.body?.imageDataUrl === 'string' ? req.body.imageDataUrl.trim() : '';
     const match = rawDataUrl.match(/^data:(image\/(?:png|jpeg|jpg));base64,([A-Za-z0-9+/=\s]+)$/i);
     if (!match) {
@@ -1991,6 +2127,12 @@ export function createApiRouter(): express.Router {
     // Mark all candidate PDFs stale so previews, downloads, and sends embed the new signature
     db.prepare(`UPDATE candidates SET offer_generated = 0, updated_at = datetime('now')`).run();
 
+    const syncResult = await syncLocalSettingsToSupabase();
+    if (!syncResult.ok) {
+      res.status(503).json({ error: `Signature metadata was saved locally, but Supabase synchronization failed: ${syncResult.error}` });
+      return;
+    }
+
     logActivity({
       adminId: req.admin!.id,
       adminEmail: req.admin!.email,
@@ -2006,12 +2148,18 @@ export function createApiRouter(): express.Router {
     });
   });
 
-  router.put('/settings/signature/options', (req: AuthRequest, res) => {
+  router.put('/settings/signature/options', async (req: AuthRequest, res) => {
     const heightPt = Math.max(24, Math.min(72, Math.round(Number(req.body?.heightPt) || 40)));
     setSetting('founder_signature_height', String(heightPt));
     setSetting('founder_signature_updated_at', new Date().toISOString());
 
     db.prepare(`UPDATE candidates SET offer_generated = 0, updated_at = datetime('now')`).run();
+
+    const syncResult = await syncLocalSettingsToSupabase();
+    if (!syncResult.ok) {
+      res.status(503).json({ error: `Signature options were saved locally, but Supabase synchronization failed: ${syncResult.error}` });
+      return;
+    }
 
     logActivity({
       adminId: req.admin!.id,
@@ -2028,7 +2176,7 @@ export function createApiRouter(): express.Router {
     });
   });
 
-  router.delete('/settings/signature', (req: AuthRequest, res) => {
+  router.delete('/settings/signature', async (req: AuthRequest, res) => {
     const existing = getSetting('founder_signature_filename', '').trim();
     for (const candidateFile of [existing, 'founder_signature.png', 'founder_signature.jpg']) {
       const safeName = path.basename(candidateFile || '');
@@ -2050,6 +2198,12 @@ export function createApiRouter(): express.Router {
 
     db.prepare(`UPDATE candidates SET offer_generated = 0, updated_at = datetime('now')`).run();
 
+    const syncResult = await syncLocalSettingsToSupabase();
+    if (!syncResult.ok) {
+      res.status(503).json({ error: `Signature was removed locally, but Supabase synchronization failed: ${syncResult.error}` });
+      return;
+    }
+
     logActivity({
       adminId: req.admin!.id,
       adminEmail: req.admin!.email,
@@ -2069,7 +2223,7 @@ export function createApiRouter(): express.Router {
     res.json({ config: getPublicEmailConfig() });
   });
 
-  router.put('/settings/email', (req: AuthRequest, res) => {
+  router.put('/settings/email', async (req: AuthRequest, res) => {
     const body = req.body || {};
     const nextHost = typeof body.smtp_host === 'string' ? body.smtp_host.trim() : getSetting('smtp_host', 'smtp.gmail.com');
 
@@ -2101,6 +2255,12 @@ export function createApiRouter(): express.Router {
     }
     if (body.max_retries !== undefined) {
       setSetting('max_retries', String(Math.max(0, Math.min(5, Number(body.max_retries) || 3))));
+    }
+
+    const syncResult = await syncLocalSettingsToSupabase();
+    if (!syncResult.ok) {
+      res.status(503).json({ error: `Email settings were saved locally, but Supabase synchronization failed: ${syncResult.error}` });
+      return;
     }
 
     logActivity({
@@ -2138,9 +2298,10 @@ export function createApiRouter(): express.Router {
     }
 
     const sampleCandidate = db.prepare('SELECT * FROM candidates ORDER BY id ASC LIMIT 1').get() as Candidate | undefined;
-    const mockSubject = `[Test] ${getMasterTemplate().subject}`;
+    const testTemplate = await getMasterTemplate();
+    const mockSubject = `[Test] ${testTemplate.subject}`;
     const bodyText = sampleCandidate
-      ? renderTemplateString(getMasterTemplate().body, sampleCandidate)
+      ? renderTemplateString(testTemplate.body, sampleCandidate)
       : 'Kalvi40 email provider verification test message.';
 
     let attachmentBuffer: Buffer = Buffer.from('Test attachment');
@@ -2176,27 +2337,30 @@ export function createApiRouter(): express.Router {
   router.get('/import/sample-excel', (_req, res) => {
     const rows = [
       {
-        'Candidate Name': 'E Sathiya Kaviya',
-        'School Name': 'Govt Panchayat Union Middle School',
-        Location: 'Pattiyandal',
+        'Candidate Name': 'Sample Candidate One',
+        'School Name': 'Sample Government Middle School',
+        Location: 'Sample Town',
         District: 'Tiruvannamalai',
-        Email: 'kaviya132052@gmail.com',
+        'Mobile Number': '9000000001',
+        Email: 'candidate1@example.org',
         'Joining Date': '21.10.2026',
       },
       {
-        'Candidate Name': 'L Divya Bharathi',
-        'School Name': 'Govt Girls Higher Secondary School',
-        Location: 'Madurantakam',
+        'Candidate Name': 'Sample Candidate Two',
+        'School Name': 'Sample Girls Higher Secondary School',
+        Location: 'Sample City',
         District: 'Chengalpattu',
-        Email: 'divya.bharathi.sample@example.org',
+        'Mobile Number': '9000000002',
+        Email: 'candidate2@example.org',
         'Joining Date': '01.11.2026',
       },
       {
-        'Candidate Name': 'A Manoj Kumar',
-        'School Name': 'Panchayat Union Middle School',
-        Location: 'Gingee',
+        'Candidate Name': 'Sample Candidate Three',
+        'School Name': 'Sample Panchayat Union Middle School',
+        Location: 'Sample Village',
         District: 'Villupuram',
-        Email: 'manoj.kumar.sample@example.org',
+        'Mobile Number': '9000000003',
+        Email: 'candidate3@example.org',
         'Joining Date': '02.11.2026',
       },
     ];

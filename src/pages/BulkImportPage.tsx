@@ -10,7 +10,7 @@ import {
   ArrowLeft,
   RotateCcw,
 } from 'lucide-react';
-import { apiRequest, downloadAuthenticatedFile } from '../lib/api';
+import { apiRequest } from '../lib/api';
 import { useToast } from '../components/ui/Toast';
 import { formatDateDDMMYYYY } from '../types/kalvi40';
 import type { NavPageId } from '../components/layout/Sidebar';
@@ -30,7 +30,7 @@ const TARGET_FIELDS: Array<{ key: TargetField; label: string; aliases: string[] 
   },
   { key: 'location', label: 'Location', aliases: ['location', 'village', 'town', 'city', 'place', 'address'] },
   { key: 'district', label: 'District', aliases: ['district', 'dist'] },
-  { key: 'phone', label: 'Phone Number', aliases: ['phone', 'phone number', 'mobile', 'mobile number', 'contact', 'telephone'] },
+  { key: 'phone', label: 'Mobile Number', aliases: ['phone', 'phone number', 'mobile', 'mobile number', 'contact', 'telephone'] },
   { key: 'email', label: 'Email', aliases: ['email', 'email address', 'email id', 'mail'] },
   { key: 'joining_date', label: 'Joining Date', aliases: ['joining date', 'join date', 'date', 'start date', 'doj'] },
 ];
@@ -81,6 +81,41 @@ export function BulkImportPage({ onNavigate }: BulkImportPageProps) {
       return `${d}.${m}.${val.getFullYear()}`;
     }
     return String(val).trim();
+  }
+
+  function downloadSampleTemplate() {
+    const rows = [
+      {
+        'Candidate Name': 'Sample Candidate One',
+        'School Name': 'Sample Government Middle School',
+        Location: 'Sample Town',
+        District: 'Tiruvannamalai',
+        'Mobile Number': '9000000001',
+        Email: 'candidate1@example.org',
+        'Joining Date': '21.10.2026',
+      },
+      {
+        'Candidate Name': 'Sample Candidate Two',
+        'School Name': 'Sample Girls Higher Secondary School',
+        Location: 'Sample City',
+        District: 'Chengalpattu',
+        'Mobile Number': '9000000002',
+        Email: 'candidate2@example.org',
+        'Joining Date': '01.11.2026',
+      },
+      {
+        'Candidate Name': 'Sample Candidate Three',
+        'School Name': 'Sample Panchayat Union Middle School',
+        Location: 'Sample Village',
+        District: 'Villupuram',
+        'Mobile Number': '9000000003',
+        Email: 'candidate3@example.org',
+        'Joining Date': '02.11.2026',
+      },
+    ];
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), 'Candidates');
+    XLSX.writeFile(workbook, 'Kalvi40_Candidate_Import_Template_With_Mobile.xlsx');
   }
 
   async function handleFileSelect(file: File) {
@@ -218,7 +253,7 @@ export function BulkImportPage({ onNavigate }: BulkImportPageProps) {
       'School Name': r.school_name,
       Location: r.location,
       District: r.district,
-      'Phone Number': r.phone,
+      'Mobile Number': r.phone,
       Email: r.email,
       'Joining Date': r.joining_date,
       'Validation Issues': r.errors.join('; '),
@@ -284,11 +319,11 @@ export function BulkImportPage({ onNavigate }: BulkImportPageProps) {
         </div>
         <button
           type="button"
-          onClick={() => downloadAuthenticatedFile('/api/import/sample-excel', 'Kalvi40_Candidate_Import_Template.xlsx')}
+          onClick={downloadSampleTemplate}
           className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-[#10243A] bg-white border border-slate-300 rounded-lg hover:bg-slate-50 whitespace-nowrap shrink-0"
         >
           <Download className="w-3.5 h-3.5" />
-          <span>Download Sample Template (.xlsx)</span>
+          <span>Download Sample Template (Mobile Number included)</span>
         </button>
       </div>
 
@@ -332,7 +367,7 @@ export function BulkImportPage({ onNavigate }: BulkImportPageProps) {
             <Upload className="w-10 h-10 text-[#2563EB] mx-auto mb-3" />
             <div className="text-base font-semibold text-[#10243A]">Click to select an Excel (.xlsx) or CSV file</div>
             <p className="text-xs text-slate-500 mt-1.5">
-              Expected columns: Candidate Name | School Name | Location | District | Phone Number | Email | Joining Date
+              Expected columns: Candidate Name | School Name | Location | District | Mobile Number | Email | Joining Date
             </p>
           </label>
         </div>
@@ -459,7 +494,7 @@ export function BulkImportPage({ onNavigate }: BulkImportPageProps) {
                     <th className="py-2.5 px-3">School Name</th>
                     <th className="py-2.5 px-3">Location</th>
                     <th className="py-2.5 px-3">District</th>
-                    <th className="py-2.5 px-3">Phone</th>
+                    <th className="py-2.5 px-3">Mobile Number</th>
                     <th className="py-2.5 px-3">Email</th>
                     <th className="py-2.5 px-3">Joining Date</th>
                     <th className="py-2.5 px-3">Validation</th>

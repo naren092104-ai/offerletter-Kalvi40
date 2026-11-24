@@ -10,7 +10,7 @@ interface AuthViewProps {
 
 export function AuthView({ initialResetToken = '', onAuthenticated }: AuthViewProps) {
   const [mode, setMode] = useState<'login' | 'forgot' | 'reset'>(initialResetToken ? 'reset' : 'login');
-  const [email, setEmail] = useState('admin@bumbleb.org.in');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [resetToken, setResetToken] = useState(initialResetToken);
   const [newPassword, setNewPassword] = useState('');
@@ -153,7 +153,7 @@ export function AuthView({ initialResetToken = '', onAuthenticated }: AuthViewPr
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       className="w-full pl-9 pr-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent"
-                      placeholder="admin@bumbleb.org.in"
+                      placeholder="Enter your administrator email"
                     />
                   </div>
                 </div>
@@ -196,16 +196,7 @@ export function AuthView({ initialResetToken = '', onAuthenticated }: AuthViewPr
               </form>
 
               <div className="mt-6 pt-5 border-t border-slate-200 text-xs text-slate-500 space-y-1">
-                <div className="font-semibold text-[#10243A]">Initial Default Administrator Credentials</div>
-                <div>
-                  Email: <span className="font-mono text-[#10243A]">admin@bumbleb.org.in</span>
-                </div>
-                <div>
-                  Password: <span className="font-mono text-[#10243A]">Kalvi40@2026</span>
-                </div>
-                <div className="text-[11px] text-slate-400 pt-1">
-                  Update your password inside Admin Profile after signing in.
-                </div>
+                <p>Use your administrator account credentials.</p>
               </div>
             </>
           )}

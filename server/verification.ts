@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { db, pdfStorageDir } from './db.ts';
+import { requireSupabase, normalizeTemplate, refreshSupabaseSettings } from './store.ts';
+import { pdfStorageDir } from './storage.ts';
 import {
   extractTextFromPdfBuffer,
   generateOfferLetterPdf,
@@ -28,19 +29,21 @@ function normalizeForPdfMatch(text: string): string {
     .trim();
 }
 
-export function getMasterTemplate(): EmailTemplate {
-  const row = db.prepare('SELECT * FROM email_templates WHERE is_master = 1 ORDER BY id DESC LIMIT 1').get() as EmailTemplate | undefined;
+export async function getMasterTemplate(): Promise<EmailTemplate> {
+  const { data: row, error } = await requireSupabase().from('email_templates').select('*').eq('is_master', true).order('id', { ascending: false }).limit(1).maybeSingle();
+  if (error) throw new Error(`Unable to load master email template from Supabase: ${error.message}`);
   if (!row) {
-    throw new Error('Master email template is missing from the database.');
+    throw new Error('Master email template is missing from Supabase.');
   }
-  return row;
+  return normalizeTemplate(row) as EmailTemplate;
 }
 
 export async function verifyCandidateForSending(
   candidate: Candidate,
   options: { ensurePdfGenerated?: boolean; templateOverride?: { subject: string; body: string } } = {}
 ): Promise<CandidateVerificationResult> {
-  const master = options.templateOverride ?? getMasterTemplate();
+  await refreshSupabaseSettings();
+  const master = options.templateOverride ?? await getMasterTemplate();
   const offerTemplate = getOfferLetterTemplate();
   const renderedSubject = renderTemplateString(master.subject, candidate, {
     contract_end_date: offerTemplate.contract_end_date,
@@ -184,13 +187,12 @@ export async function verifyCandidateForSending(
   const issues = checks.filter((c) => !c.passed).map((c) => c.message);
   const valid = issues.length === 0;
 
-  db.prepare(`
-    UPDATE candidates
-    SET verification_status = ?,
-        verification_issues = ?,
-        updated_at = datetime('now')
-    WHERE id = ?
-  `).run(valid ? 'verified' : 'failed', valid ? null : JSON.stringify(issues), candidate.id);
+  const { error } = await requireSupabase().from('candidates').update({
+    verification_status: valid ? 'verified' : 'failed',
+    verification_issues: valid ? null : issues,
+    updated_at: new Date().toISOString(),
+  }).eq('id', candidate.id);
+  if (error) throw new Error(`Unable to save candidate verification in Supabase: ${error.message}`);
 
   return {
     candidateId: candidate.id,

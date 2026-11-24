@@ -162,10 +162,10 @@ export function GeneralSettingsPage() {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 text-xs">
           <div className="p-3.5 border border-slate-200 rounded-lg bg-[#F7F8FA]">
-            <div className="font-semibold text-[#10243A]">Active Local Database</div>
+            <div className="font-semibold text-[#10243A]">Active Database</div>
             <div className="text-[#16A36A] font-medium mt-1 inline-flex items-center gap-1">
               <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>SQLite ACID Store Connected</span>
+              <span>Supabase PostgreSQL Connected</span>
             </div>
           </div>
           <div className="p-3.5 border border-slate-200 rounded-lg bg-[#F7F8FA]">
