@@ -5,7 +5,7 @@
 - **Backend**:
    - **Local / Container / Node Runtime**: Express API (`server.ts`) backed by the existing **Supabase PostgreSQL** project through the server-only client in `server/supabase.ts`. Candidate, admin, settings, template, campaign, send-history, and audit-log reads/writes go to Supabase. The local filesystem is used for generated PDFs and signature uploads; PDFs are also uploaded to Supabase Storage when configured.
    - **Legacy only**: `server/db.ts` and `server/routes.ts` contain the former SQLite implementation and are not mounted by `server.ts`. SQLite export scripts remain for archival/reference only; they are not part of active runtime data flow.
-   - **Cloudflare Workers**: `worker/index.ts` is a separate deployment stub and is not the local Express API entry point.
+   - **Cloudflare Workers**: `worker/index.ts` is an API stub and does not implement the complete login/dashboard API. The full API is the Express service started by `server.ts`.
 - **Email Delivery**: **Brevo Transactional Email API** (`https://api.brevo.com/v3/smtp/email`) or any compatible SMTP relay (`smtp-relay.brevo.com:587`).
 
 ---
@@ -29,7 +29,16 @@
 ---
 
 ## 4. Cloudflare Deployment
-### A. Cloudflare Workers (Backend)
+### A. Express API backend (Render)
+Cloudflare Pages is a static frontend and cannot process `POST /api/auth/login`. Deploy the Express backend separately. This repository includes a Render Blueprint in `render.yaml`:
+
+1. In Render, choose **New → Blueprint**, connect this GitHub repository, and create the `kalvi40-api` web service from `render.yaml`.
+2. Set `SUPABASE_URL` to the URL of the **existing** Supabase project and `SUPABASE_SECRET_KEY` to its server-only secret key (or configure `SUPABASE_SERVICE_ROLE_KEY` instead). Do not run migrations or create another database. The server reads existing `admins`, `system_settings`, candidates, and related tables.
+3. Set `APP_URL` to `https://offerletter-kalvi40.pages.dev` and `CORS_ORIGINS` to that exact origin. Add any custom frontend origin as another comma-separated origin. Set SMTP values in Render only if email sending is needed. Never put Supabase secret keys in `VITE_*` variables.
+4. Deploy and wait for the service health check at `/api/health` to pass. Copy the service's public base URL, such as `https://kalvi40-api.onrender.com`.
+
+### B. Cloudflare Workers (optional stub)
+`worker/index.ts` is not a substitute for the full Express backend and currently does not implement `/api/auth/login`. Keep it separate; do not point the login frontend at this stub.
 ```bash
 npm install -g wrangler
 wrangler login
@@ -41,13 +50,13 @@ wrangler secret put BREVO_API_KEY --config wrangler.worker.toml
 npm run deploy:worker
 ```
 
-### B. Cloudflare Pages (Frontend)
+### C. Cloudflare Pages (Frontend)
 1. Connect repository to Cloudflare Pages.
 2. In **Settings → Builds & deployments → Build configurations**, set the root directory to `/` (repository root) and **Build command** to `npm run build`. The root `wrangler.toml` declares `pages_build_output_dir = "./dist"` for the Pages output directory; Wrangler does not set the Git build command.
-3. Set environment variable `VITE_API_BASE_URL` to the URL of the deployed API service when it is on a different origin.
+3. In **Settings → Environment variables**, set `VITE_API_BASE_URL` to the Render API base URL (for example `https://kalvi40-api.onrender.com`) for Production and Preview, without a trailing slash. This value is public and contains no credentials. It must be set before the production build because Vite embeds it in the frontend bundle.
 4. Ensure the project uses the V2 build system, save settings, and retry/redeploy. The build log must show `npm run build` rather than `No build command specified`; the published root `index.html` must reference a hashed `/assets/index-*.js` bundle, not `/src/main.tsx`.
 
-The Vite build writes a Cloudflare Pages `dist/_headers` file containing exact-path `Content-Type` overrides for every emitted `.js`/`.mjs` module and `.css` stylesheet. The failed build log shows Cloudflare skipped the build and then could not find `dist`. The generated `dist` directory is therefore tracked in Git as a fallback so Pages can upload the already-built site even while its build command is blank. For automatic builds on future source changes, set the Pages dashboard build command to `npm run build`; until then, run `npm run build` and commit the updated `dist` output along with frontend changes. The API Worker configuration is preserved in `wrangler.worker.toml`; deploy it with `npm run deploy:worker` (or `wrangler deploy --config wrangler.worker.toml`). Do not run bare `wrangler deploy`, because the root Wrangler config now belongs to Pages.
+The Vite build writes a Cloudflare Pages `dist/_headers` file containing exact-path `Content-Type` overrides for every emitted `.js`/`.mjs` module and `.css` stylesheet. Cloudflare's Pages build command must be set in the dashboard to `npm run build`; `pages_build_output_dir` only selects the output folder, it does not run the build. Configure `VITE_API_BASE_URL` before rebuilding/redeploying so the generated bundle calls Render instead of posting to the Pages static host. The generated `dist` directory is tracked as a fallback for deployments where Cloudflare skips its build; after frontend or API-origin changes, rebuild and commit updated `dist` if the dashboard build command remains blank. The API Worker configuration is preserved in `wrangler.worker.toml`; deploy it with `npm run deploy:worker` (or `wrangler deploy --config wrangler.worker.toml`). Do not run bare `wrangler deploy`, because the root Wrangler config now belongs to Pages.
 
 > **Troubleshooting:** If the browser requests `/src/main.tsx` and receives `application/octet-stream`, Pages is publishing the source repository instead of Vite's production output. TSX source is not browser-executable JavaScript. Correct the Pages output directory to `dist`, rebuild, and redeploy; do not try to serve `.tsx` as JavaScript.
 

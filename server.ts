@@ -12,8 +12,32 @@ async function startServer(): Promise<void> {
   const app = express();
   const PORT = Number(process.env.PORT || 3000);
   const isProd = process.env.NODE_ENV === 'production' && fs.existsSync(path.resolve(process.cwd(), 'dist/index.html'));
+  const allowedOrigins = new Set(
+    [process.env.APP_URL, ...(process.env.CORS_ORIGINS || '').split(',')]
+      .map((origin) => origin?.trim().replace(/\/$/, ''))
+      .filter((origin): origin is string => Boolean(origin)),
+  );
 
   app.set('trust proxy', 1);
+  app.use((req, res, next) => {
+    const origin = req.get('Origin');
+    const originAllowed = Boolean(origin && allowedOrigins.has(origin));
+
+    if (origin && originAllowed) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Vary', 'Origin');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+      res.setHeader('Access-Control-Max-Age', '86400');
+    }
+
+    if (req.method === 'OPTIONS') {
+      res.sendStatus(origin && !originAllowed ? 403 : 204);
+      return;
+    }
+
+    next();
+  });
   app.use(express.json({ limit: '15mb' }));
   app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 

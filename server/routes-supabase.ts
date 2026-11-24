@@ -14,7 +14,11 @@ import { getMasterTemplate, verifyCandidateForSending } from './verification.ts'
 import { DEFAULT_MASTER_BODY, DEFAULT_MASTER_SUBJECT, DEFAULT_OFFER_LETTER_TEMPLATE, formatDateDDMMYYYY, normalizeSchoolName, renderTemplateString, sanitizeOfferFilename, type AdminUser, type Candidate } from '../src/types/kalvi40.ts';
 
 interface AuthRequest extends Request { admin?: AdminUser; }
-const JWT_SECRET = process.env.JWT_SECRET || 'kalvi40-bumbleb-enterprise-secret-2026';
+const configuredJwtSecret = process.env.JWT_SECRET?.trim();
+if (process.env.NODE_ENV === 'production' && !configuredJwtSecret) {
+  throw new Error('JWT_SECRET must be configured in production.');
+}
+const JWT_SECRET = configuredJwtSecret || 'kalvi40-bumbleb-enterprise-secret-2026';
 type AsyncHandler = (req: AuthRequest, res: Response) => Promise<unknown>;
 const asyncRoute = (handler: AsyncHandler) => (req: Request, res: Response, next: NextFunction) => Promise.resolve(handler(req as AuthRequest, res)).catch(next);
 const now = () => new Date().toISOString();
