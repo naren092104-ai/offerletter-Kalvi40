@@ -14,11 +14,13 @@ import { getMasterTemplate, verifyCandidateForSending } from './verification.ts'
 import { DEFAULT_MASTER_BODY, DEFAULT_MASTER_SUBJECT, DEFAULT_OFFER_LETTER_TEMPLATE, formatDateDDMMYYYY, normalizeSchoolName, renderTemplateString, sanitizeOfferFilename, type AdminUser, type Candidate } from '../src/types/kalvi40.ts';
 
 interface AuthRequest extends Request { admin?: AdminUser; }
-const configuredJwtSecret = process.env.JWT_SECRET?.trim();
-if (process.env.NODE_ENV === 'production' && !configuredJwtSecret) {
-  throw new Error('JWT_SECRET must be configured in production.');
+function getJwtSecret(): string {
+  const configuredJwtSecret = process.env.JWT_SECRET?.trim();
+  if (process.env.NODE_ENV === 'production' && !configuredJwtSecret) {
+    throw new Error('JWT_SECRET must be configured in production.');
+  }
+  return configuredJwtSecret || 'kalvi40-bumbleb-enterprise-secret-2026';
 }
-const JWT_SECRET = configuredJwtSecret || 'kalvi40-bumbleb-enterprise-secret-2026';
 type AsyncHandler = (req: AuthRequest, res: Response) => Promise<unknown>;
 const asyncRoute = (handler: AsyncHandler) => (req: Request, res: Response, next: NextFunction) => Promise.resolve(handler(req as AuthRequest, res)).catch(next);
 const now = () => new Date().toISOString();
@@ -30,7 +32,7 @@ function sendError(res: Response, error: unknown) {
   const message = error instanceof Error ? error.message : 'Supabase operation failed.';
   res.status(503).json({ error: message });
 }
-function signToken(admin: AdminUser) { return jwt.sign({ id: admin.id, email: admin.email, role: admin.role }, JWT_SECRET, { expiresIn: '12h' }); }
+function signToken(admin: AdminUser) { return jwt.sign({ id: admin.id, email: admin.email, role: admin.role }, getJwtSecret(), { expiresIn: '12h' }); }
 async function recordActivity(req: AuthRequest, action: string, entityType: string, details: string, entityId?: number | string | null) {
   await logActivity({ adminId: req.admin?.id ?? null, adminEmail: req.admin?.email || 'unknown', action, entityType, entityId, details, ipAddress: clientIp(req) });
 }
@@ -131,7 +133,7 @@ export function createApiRouter(): express.Router {
       const raw = auth?.startsWith('Bearer ') ? auth.slice(7) : queryToken;
       if (!raw) { res.status(401).json({ error: 'Authentication required. Please sign in.' }); return; }
       let decoded: { id: number };
-      try { decoded = jwt.verify(raw, JWT_SECRET) as { id: number }; } catch { res.status(401).json({ error: 'Session expired. Please sign in again.' }); return; }
+      try { decoded = jwt.verify(raw, getJwtSecret()) as { id: number }; } catch { res.status(401).json({ error: 'Session expired. Please sign in again.' }); return; }
       const { data, error } = await requireSupabase().from('admins').select('id,name,email,role,designation,phone,last_login_at,created_at').eq('id', decoded.id).maybeSingle();
       if (error) throw new Error(error.message);
       if (!data) { res.status(401).json({ error: 'Administrator session is invalid or expired.' }); return; }

@@ -1,8 +1,10 @@
 /**
- * Cloudflare Worker Supabase API + Queue Stub for Kalvi40
- * Supabase PostgreSQL and Storage use publishable/secret bindings; SMTP sending remains in the existing Express runtime.
+ * Phase 1 Cloudflare Worker API for Kalvi40.
+ * Admin login uses the existing Supabase admins table and custom bcrypt/JWT auth.
+ * Other existing Express API routes remain in place and are not yet fully ported.
  */
 import { createClient } from '@supabase/supabase-js';
+import bcrypt from 'bcryptjs';
 
 export interface Env {
   JWT_SECRET: string;
@@ -29,19 +31,67 @@ interface BulkEmailJob {
   pdfFilename: string;
 }
 
-function corsHeaders(origin = '*'): Record<string, string> {
+function corsHeaders(origin?: string): Record<string, string> {
   return {
-    'Access-Control-Allow-Origin': origin,
+    ...(origin ? { 'Access-Control-Allow-Origin': origin, Vary: 'Origin' } : {}),
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Max-Age': '86400',
   };
 }
 
-function jsonResponse(data: unknown, status = 200, origin = '*'): Response {
+function jsonResponse(data: unknown, status = 200, origin?: string): Response {
   return new Response(JSON.stringify(data), {
     status,
     headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
   });
+}
+
+function base64UrlEncode(bytes: Uint8Array): string {
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+}
+
+export async function signAdminToken(admin: { id: number; email: string; role: string }, secret: string): Promise<string> {
+  const issuedAt = Math.floor(Date.now() / 1000);
+  const header = base64UrlEncode(new TextEncoder().encode(JSON.stringify({ alg: 'HS256', typ: 'JWT' })));
+  const payload = base64UrlEncode(new TextEncoder().encode(JSON.stringify({
+    id: admin.id,
+    email: admin.email,
+    role: admin.role,
+    iat: issuedAt,
+    exp: issuedAt + 12 * 60 * 60,
+  })));
+  const unsignedToken = `${header}.${payload}`;
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const signature = new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(unsignedToken)));
+  return `${unsignedToken}.${base64UrlEncode(signature)}`;
+}
+
+async function logLoginActivity(
+  supabase: ReturnType<typeof createPrivilegedSupabaseClient>,
+  request: Request,
+  values: { adminId?: number; adminEmail: string; action: string; details: string },
+): Promise<void> {
+  const forwardedFor = request.headers.get('x-forwarded-for') || '';
+  const ipAddress = forwardedFor.split(',')[0].trim() || request.headers.get('cf-connecting-ip');
+  const { error } = await supabase.from('activity_logs').insert({
+    admin_id: values.adminId ?? null,
+    admin_email: values.adminEmail,
+    action: values.action,
+    entity_type: 'auth',
+    entity_id: values.adminId == null ? null : String(values.adminId),
+    details: values.details,
+    ip_address: ipAddress,
+  });
+  if (error) throw new Error(`Unable to write login activity to Supabase: ${error.message}`);
 }
 
 function createPublishableSupabaseClient(env: Env, accessToken?: string) {
@@ -126,7 +176,16 @@ async function verifyJwt(token: string, secret: string): Promise<Record<string, 
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const origin = env.ALLOWED_ORIGIN || '*';
+    const requestOrigin = request.headers.get('Origin') || undefined;
+    const allowedOrigins = (env.ALLOWED_ORIGIN || 'https://offerletter-kalvi40.pages.dev')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean);
+    if (requestOrigin && !allowedOrigins.includes(requestOrigin)) {
+      return new Response('Origin is not allowed.', { status: 403, headers: { Vary: 'Origin' } });
+    }
+    const origin = requestOrigin && allowedOrigins.includes(requestOrigin) ? requestOrigin : undefined;
+
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: corsHeaders(origin) });
     }
@@ -134,6 +193,75 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === '/api/health') {
       return jsonResponse({ status: 'ok', runtime: 'cloudflare-workers' }, 200, origin);
+    }
+
+    if (url.pathname === '/api/auth/login' && request.method === 'POST') {
+      let body: { email?: unknown; password?: unknown };
+      try {
+        body = await request.json() as { email?: unknown; password?: unknown };
+      } catch {
+        return jsonResponse({ error: 'Request body must be valid JSON.' }, 400, origin);
+      }
+
+      const email = String(body.email || '').trim().toLowerCase();
+      const password = String(body.password || '');
+      if (!email || !password) {
+        return jsonResponse({ error: 'Email and password are required.' }, 400, origin);
+      }
+
+      const jwtSecret = env.JWT_SECRET?.trim();
+      if (!jwtSecret) {
+        return jsonResponse({ error: 'JWT_SECRET is not configured for this Worker.' }, 503, origin);
+      }
+
+      let supabase: ReturnType<typeof createPrivilegedSupabaseClient>;
+      try {
+        supabase = createPrivilegedSupabaseClient(env);
+      } catch (error) {
+        return jsonResponse({ error: error instanceof Error ? error.message : 'Supabase configuration is missing.' }, 503, origin);
+      }
+
+      const { data: row, error } = await supabase.from('admins').select('*').eq('email', email).maybeSingle();
+      if (error) {
+        return jsonResponse({ error: `Unable to authenticate against Supabase: ${error.message}` }, 503, origin);
+      }
+
+      const validPassword = row?.password_hash ? await bcrypt.compare(password, row.password_hash) : false;
+      if (!row || !validPassword) {
+        await logLoginActivity(supabase, request, {
+          adminEmail: email || 'unknown',
+          action: 'AUTH_LOGIN_FAILED',
+          details: `Failed sign-in attempt for ${email}`,
+        });
+        return jsonResponse({ error: 'Invalid email address or password.' }, 401, origin);
+      }
+
+      const timestamp = new Date().toISOString();
+      const { error: updateError } = await supabase.from('admins')
+        .update({ last_login_at: timestamp, updated_at: timestamp })
+        .eq('id', row.id);
+      if (updateError) {
+        return jsonResponse({ error: `Unable to update administrator login time: ${updateError.message}` }, 503, origin);
+      }
+
+      const admin = {
+        id: row.id,
+        name: row.name,
+        email: row.email,
+        role: row.role,
+        designation: row.designation,
+        phone: row.phone,
+        last_login_at: timestamp,
+        created_at: row.created_at,
+      };
+      await logLoginActivity(supabase, request, {
+        adminId: admin.id,
+        adminEmail: email,
+        action: 'AUTH_LOGIN',
+        details: `Administrator ${admin.name} signed in.`,
+      });
+
+      return jsonResponse({ token: await signAdminToken(admin, jwtSecret), admin }, 200, origin);
     }
 
     if (url.pathname === '/api/health/supabase' && request.method === 'GET') {

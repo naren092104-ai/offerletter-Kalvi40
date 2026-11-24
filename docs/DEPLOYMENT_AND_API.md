@@ -30,34 +30,32 @@
 ---
 
 ## 4. Cloudflare Deployment
-### A. Express API backend (Render)
-Cloudflare Pages is a static frontend and cannot process `POST /api/auth/login`. Deploy the Express backend separately. This repository includes a Render Blueprint in `render.yaml`:
+### A. Express API backend (Render alternative)
+Cloudflare Pages is a static frontend and cannot process `POST /api/auth/login`. If using the existing complete Express API, deploy it separately. This repository includes a Render Blueprint in `render.yaml`:
 
 1. In Render, choose **New → Blueprint**, connect this GitHub repository, and create the `kalvi40-api` web service from `render.yaml`.
 2. Set `SUPABASE_URL` to the URL of the **existing** Supabase project and `SUPABASE_SECRET_KEY` to its server-only secret key (or configure `SUPABASE_SERVICE_ROLE_KEY` instead). Do not run migrations or create another database. The server reads existing `admins`, `system_settings`, candidates, and related tables.
 3. Set `APP_URL` to `https://offerletter-kalvi40.pages.dev` and `CORS_ORIGINS` to that exact origin. Add any custom frontend origin as another comma-separated origin. Set SMTP values in Render only if email sending is needed. Never put Supabase secret keys in `VITE_*` variables.
 4. Deploy and wait for the service health check at `/api/health` to pass. Copy the service's public base URL, such as `https://kalvi40-api.onrender.com`.
 
-### B. Cloudflare Workers (optional stub)
-`worker/index.ts` is not a substitute for the full Express backend and currently does not implement `/api/auth/login`. Keep it separate; do not point the login frontend at this stub.
-```bash
-npm install -g wrangler
-wrangler login
-wrangler queues create kalvi40-email-queue
-wrangler secret put JWT_SECRET --config wrangler.worker.toml
-wrangler secret put SUPABASE_URL --config wrangler.worker.toml
-wrangler secret put SUPABASE_SERVICE_ROLE_KEY --config wrangler.worker.toml
-wrangler secret put BREVO_API_KEY --config wrangler.worker.toml
-npm run deploy:worker
-```
+### B. Cloudflare Workers backend (Phase 1 local validation; not deployed)
+`worker/index.ts` now implements `GET /api/health` and `POST /api/auth/login` using the existing `public.admins` table, bcryptjs password comparison, and an HS256 JWT with the existing 12-hour expiry. It updates the same login timestamp and audit log as the Express route. CORS is restricted to `ALLOWED_ORIGIN` (configured to the Pages origin in `wrangler.worker.toml`).
+
+**Compatibility result:** An initial Express-over-`httpServerHandler` smoke test failed before startup: Express 4 imports `body-parser`, whose `iconv-lite` dependency crashed in the Workers runtime (`require_streams(...) is not a function`). The Worker entry therefore uses native `fetch` handling for this phase instead of importing Express. The original complete Express API remains in `server/routes-supabase.ts` and is still used by `server.ts`; it has not been removed. The Worker stub's existing routes were not overwritten, but the complete route set is not yet ported in Phase 1.
+
+For local checks, copy `.dev.vars.example` to `.dev.vars`, then enter your existing Supabase URL and server-only key plus a **new strong test JWT secret**. Keep `.dev.vars` untracked; never use the Supabase secret in frontend variables. With values configured, run `npm run dev:worker`, then check `GET http://127.0.0.1:8787/api/health`, a CORS `OPTIONS` request from `https://offerletter-kalvi40.pages.dev`, and `POST /api/auth/login` with an empty JSON object (expected HTTP 400). `npm run check:worker` runs Wrangler `--dry-run` only and does not deploy. A real successful login updates `last_login_at` and writes an activity log, so it was not attempted during this no-database-mutation compatibility check.
+
+Required Worker secrets for login: `JWT_SECRET`, `SUPABASE_URL`, and `SUPABASE_SECRET_KEY` (or legacy `SUPABASE_SERVICE_ROLE_KEY`). `SUPABASE_STORAGE_BUCKET`, `ALLOWED_ORIGIN`, and `APP_URL` are non-secret variables. No Supabase migration is needed. When explicitly approved for deployment, add the secrets through Wrangler using `--config wrangler.worker.toml`, then use `npm run deploy:worker`; **do not deploy as part of this phase**.
+
+Remaining work before moving the frontend to this Worker: port/validate session and protected routes, candidate CRUD, imports, templates, reporting, signatures, PDFs and verification; replace durable local filesystem access with Supabase Storage; migrate timer-based campaign processing to a real Cloudflare Queue consumer; and replace Nodemailer SMTP with a Worker-compatible email API. Until then, the complete frontend must continue targeting a backend that implements those routes.
 
 ### C. Cloudflare Pages (Frontend)
 1. Connect repository to Cloudflare Pages.
 2. In **Settings → Builds & deployments → Build configurations**, set the root directory to `/` (repository root) and **Build command** to `npm run build`. The root `wrangler.toml` declares `pages_build_output_dir = "./dist"` for the Pages output directory; Wrangler does not set the Git build command.
-3. In **Settings → Environment variables**, set `VITE_API_BASE_URL` to the Render API base URL (for example `https://kalvi40-api.onrender.com`) for Production and Preview, without a trailing slash. This value is public and contains no credentials. It must be set before the production build because Vite embeds it in the frontend bundle.
+3. In **Settings → Environment variables**, set `VITE_API_BASE_URL` to the chosen deployed backend's public base URL (Render Express or a Worker) for Production and Preview, without a trailing slash. This value is public and contains no credentials. It must be set before the production build because Vite embeds it in the frontend bundle. **Do not point the complete frontend at the Phase 1 Worker yet:** most routes are still Express-only.
 4. Ensure the project uses the V2 build system, save settings, and retry/redeploy. The build log must show `npm run build` rather than `No build command specified`; the published root `index.html` must reference a hashed `/assets/index-*.js` bundle, not `/src/main.tsx`.
 
-The Vite build writes a Cloudflare Pages `dist/_headers` file containing exact-path `Content-Type` overrides for every emitted `.js`/`.mjs` module and `.css` stylesheet. Cloudflare's Pages build command must be set in the dashboard to `npm run build`; `pages_build_output_dir` only selects the output folder, it does not run the build. Configure `VITE_API_BASE_URL` before rebuilding/redeploying so the generated bundle calls Render instead of posting to the Pages static host. The generated `dist` directory is tracked as a fallback for deployments where Cloudflare skips its build; after frontend or API-origin changes, rebuild and commit updated `dist` if the dashboard build command remains blank. The API Worker configuration is preserved in `wrangler.worker.toml`; deploy it with `npm run deploy:worker` (or `wrangler deploy --config wrangler.worker.toml`). Do not run bare `wrangler deploy`, because the root Wrangler config now belongs to Pages.
+The Vite build writes a Cloudflare Pages `dist/_headers` file containing exact-path `Content-Type` overrides for every emitted `.js`/`.mjs` module and `.css` stylesheet. Cloudflare's Pages build command must be set in the dashboard to `npm run build`; `pages_build_output_dir` only selects the output folder, it does not run the build. Configure `VITE_API_BASE_URL` before rebuilding/redeploying so the generated bundle calls the chosen backend instead of posting to the Pages static host. The generated `dist` directory is tracked as a fallback for deployments where Cloudflare skips its build; after frontend or API-origin changes, rebuild and commit updated `dist` if the dashboard build command remains blank. The API Worker configuration is preserved in `wrangler.worker.toml`; deploy it with `npm run deploy:worker` (or `wrangler deploy --config wrangler.worker.toml`). Do not run bare `wrangler deploy`, because the root Wrangler config now belongs to Pages.
 
 > **Troubleshooting:** If the browser requests `/src/main.tsx` and receives `application/octet-stream`, Pages is publishing the source repository instead of Vite's production output. TSX source is not browser-executable JavaScript. Correct the Pages output directory to `dist`, rebuild, and redeploy; do not try to serve `.tsx` as JavaScript.
 

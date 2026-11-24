@@ -1,9 +1,12 @@
 name = "kalvi40-offer-worker"
 main = "worker/index.ts"
-compatibility_date = "2025-10-01"
+compatibility_date = "2026-11-24"
+compatibility_flags = ["nodejs_compat"]
 
 [vars]
 SUPABASE_STORAGE_BUCKET = "offer-letters"
+ALLOWED_ORIGIN = "https://offerletter-kalvi40.pages.dev"
+APP_URL = "https://offerletter-kalvi40.pages.dev"
 
 # Uncomment after creating Cloudflare Queue:
 # `npx wrangler queues create kalvi40-email-queue`
@@ -18,7 +21,8 @@ SUPABASE_STORAGE_BUCKET = "offer-letters"
 # max_retries = 3
 
 # Required Wrangler secrets/environment:
+# - JWT_SECRET (Worker-generated HS256 token signing key; keep consistent across deployments)
 # - SUPABASE_URL
-# - SUPABASE_PUBLISHABLE_KEY
-# - SUPABASE_SECRET_KEY (privileged Worker operations only)
+# - SUPABASE_SECRET_KEY (or legacy SUPABASE_SERVICE_ROLE_KEY) for admin lookup/update and audit logging
+# - SUPABASE_PUBLISHABLE_KEY is retained for the existing Worker stub routes only
 # SUPABASE_SERVICE_ROLE_KEY is retained only for legacy integrations.

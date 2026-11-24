@@ -5,6 +5,8 @@ const DATA_DIR = path.resolve(process.cwd(), 'data');
 export const pdfStorageDir = path.join(DATA_DIR, 'pdfs');
 export const uploadsStorageDir = path.join(DATA_DIR, 'uploads');
 
-for (const directory of [DATA_DIR, pdfStorageDir, uploadsStorageDir]) {
-  fs.mkdirSync(directory, { recursive: true });
+export function initializeLocalStorage(): void {
+  for (const directory of [DATA_DIR, pdfStorageDir, uploadsStorageDir]) {
+    fs.mkdirSync(directory, { recursive: true });
+  }
 }

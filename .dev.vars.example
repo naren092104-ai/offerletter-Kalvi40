@@ -1,2 +1,4 @@
 SUPABASE_URL=https://your-project-ref.supabase.co
 SUPABASE_PUBLISHABLE_KEY=sb_publishable_your_publishable_key
+SUPABASE_SECRET_KEY=sb_secret_your_server_only_secret_key
+JWT_SECRET=replace-with-a-long-random-secret

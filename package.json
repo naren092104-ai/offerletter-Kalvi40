@@ -9,6 +9,8 @@
     "build": "vite build",
     "deploy:pages:preview": "npm run build && npx wrangler pages deploy dist --project-name offerletter-kalvi40 --branch mime-fix-preview",
     "deploy:worker": "npx wrangler deploy --config wrangler.worker.toml",
+    "dev:worker": "npx wrangler dev --config wrangler.worker.toml",
+    "check:worker": "npx wrangler deploy --config wrangler.worker.toml --dry-run",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"
@@ -47,6 +49,7 @@
     "esbuild": "^0.28.2",
     "supabase": "^3.3.0",
     "tailwindcss": "^4.3.3",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "wrangler": "^4.167.0"
   }
 }
