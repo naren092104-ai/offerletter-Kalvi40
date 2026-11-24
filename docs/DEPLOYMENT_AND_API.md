@@ -4,6 +4,7 @@
 - **Frontend**: React + TypeScript + Vite + Tailwind CSS (deployable to **Cloudflare Pages**)
 - **Backend**:
    - **Local / Container / Node Runtime**: Express API (`server.ts`) backed by the existing **Supabase PostgreSQL** project through the server-only client in `server/supabase.ts`. Candidate, admin, settings, template, campaign, send-history, and audit-log reads/writes go to Supabase. The local filesystem is used for generated PDFs and signature uploads; PDFs are also uploaded to Supabase Storage when configured.
+   - **Authentication**: The current app uses the existing `public.admins` table (`password_hash` verified with bcrypt) and Express-issued JWTs. It does not use Supabase Auth; migrating to Supabase Auth would require provisioning/mapping users and changing session behavior, so the existing custom auth is preserved.
    - **Legacy only**: `server/db.ts` and `server/routes.ts` contain the former SQLite implementation and are not mounted by `server.ts`. SQLite export scripts remain for archival/reference only; they are not part of active runtime data flow.
    - **Cloudflare Workers**: `worker/index.ts` is an API stub and does not implement the complete login/dashboard API. The full API is the Express service started by `server.ts`.
 - **Email Delivery**: **Brevo Transactional Email API** (`https://api.brevo.com/v3/smtp/email`) or any compatible SMTP relay (`smtp-relay.brevo.com:587`).

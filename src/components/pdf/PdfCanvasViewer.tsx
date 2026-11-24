@@ -11,7 +11,7 @@ import {
   Maximize2,
   Minimize2,
 } from 'lucide-react';
-import { downloadAuthenticatedFile, getAuthToken } from '../../lib/api';
+import { downloadAuthenticatedFile, getApiUrl, getAuthToken } from '../../lib/api';
 
 (globalThis as unknown as { pdfjsWorker?: unknown }).pdfjsWorker = pdfjsWorker;
 
@@ -96,9 +96,8 @@ export function PdfCanvasViewer({
       setError(null);
       try {
         const token = getAuthToken();
-        const apiBase = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
         const res = await fetch(
-          `${apiBase}/api/candidates/${candidateId}/pdf?inline=1&refresh=1&v=${refreshKey}-${internalReload}`,
+          `${getApiUrl(`/api/candidates/${candidateId}/pdf`)}?inline=1&refresh=1&v=${refreshKey}-${internalReload}`,
           {
             headers: token ? { Authorization: `Bearer ${token}` } : {},
           }

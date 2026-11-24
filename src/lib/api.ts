@@ -25,6 +25,38 @@ export class ApiError extends Error {
   }
 }
 
+export function getApiUrl(path: string): string {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+
+  if (!API_BASE) {
+    if (import.meta.env.PROD) {
+      throw new ApiError(
+        'The API backend is not configured. Set VITE_API_BASE_URL to the deployed Express API URL in Cloudflare Pages, then rebuild the frontend.',
+        503,
+      );
+    }
+    return normalizedPath;
+  }
+
+  if (import.meta.env.PROD) {
+    let configuredOrigin: string;
+    try {
+      configuredOrigin = new URL(API_BASE).origin;
+    } catch {
+      throw new ApiError('VITE_API_BASE_URL must be a valid absolute URL for the deployed API.', 503);
+    }
+
+    if (configuredOrigin === window.location.origin) {
+      throw new ApiError(
+        'VITE_API_BASE_URL points to the static Cloudflare Pages site. Set it to the separate Express API URL and rebuild.',
+        503,
+      );
+    }
+  }
+
+  return `${API_BASE}${normalizedPath}`;
+}
+
 let onUnauthorizedCallback: (() => void) | null = null;
 export function registerUnauthorizedHandler(cb: () => void): void {
   onUnauthorizedCallback = cb;
@@ -40,7 +72,7 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
     headers.set('Authorization', `Bearer ${token}`);
   }
 
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await fetch(getApiUrl(path), {
     ...options,
     headers,
   });
@@ -74,12 +106,12 @@ export function getCandidatePdfUrl(candidateId: number, mode: 'inline' | 'downlo
   }
   if (refresh) params.set('refresh', '1');
   if (token) params.set('token', token);
-  return `${API_BASE}/api/candidates/${candidateId}/pdf?${params.toString()}`;
+  return `${getApiUrl(`/api/candidates/${candidateId}/pdf`)}?${params.toString()}`;
 }
 
 export async function downloadAuthenticatedFile(url: string, fallbackFilename: string): Promise<void> {
   const token = getAuthToken();
-  const response = await fetch(`${API_BASE}${url}`, {
+  const response = await fetch(getApiUrl(url), {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   if (!response.ok) {

@@ -9,7 +9,7 @@ import {
   RotateCcw,
   Save,
 } from 'lucide-react';
-import { apiRequest, getAuthToken } from '../lib/api';
+import { apiRequest, getApiUrl, getAuthToken } from '../lib/api';
 import { useToast } from '../components/ui/Toast';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { PdfCanvasViewer } from '../components/pdf/PdfCanvasViewer';
@@ -79,8 +79,7 @@ export function OfferTemplatePage({ onNavigate }: OfferTemplatePageProps) {
       setPreviewLoading(true);
       try {
         const token = getAuthToken();
-        const apiBase = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
-        const res = await fetch(`${apiBase}/api/templates/offer/preview-pdf`, {
+        const res = await fetch(getApiUrl('/api/templates/offer/preview-pdf'), {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
