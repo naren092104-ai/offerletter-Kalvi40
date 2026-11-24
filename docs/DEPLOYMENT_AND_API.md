@@ -34,24 +34,24 @@
 npm install -g wrangler
 wrangler login
 wrangler queues create kalvi40-email-queue
-wrangler secret put JWT_SECRET
-wrangler secret put SUPABASE_URL
-wrangler secret put SUPABASE_SERVICE_ROLE_KEY
-wrangler secret put BREVO_API_KEY
-wrangler deploy
+wrangler secret put JWT_SECRET --config wrangler.worker.toml
+wrangler secret put SUPABASE_URL --config wrangler.worker.toml
+wrangler secret put SUPABASE_SERVICE_ROLE_KEY --config wrangler.worker.toml
+wrangler secret put BREVO_API_KEY --config wrangler.worker.toml
+npm run deploy:worker
 ```
 
 ### B. Cloudflare Pages (Frontend)
 1. Connect repository to Cloudflare Pages.
-2. Set the project root directory to `/` (repository root), build command to `npm run build`, and build output directory to `dist` (not `/`, `src`, or the repository root).
+2. Use the V2 build system, set the project root directory to `/` (repository root), and build command to `npm run build`. The root `wrangler.toml` now declares `pages_build_output_dir = "./dist"`, making `dist` the Pages output instead of the repository root.
 3. Set environment variable `VITE_API_BASE_URL` to the URL of the deployed API service when it is on a different origin.
 4. Redeploy after changing these settings. The published root `index.html` must reference a hashed `/assets/index-*.js` bundle; it must not reference `/src/main.tsx`.
 
-The Vite build writes a Cloudflare Pages `dist/_headers` file containing exact-path `Content-Type` overrides for every emitted `.js`/`.mjs` module and `.css` stylesheet. The existing root `wrangler.toml` is intentionally for the API Worker (`main = "worker/index.ts"`); do not add `pages_build_output_dir` to it or use `wrangler deploy` for the frontend, because that would mix the Pages configuration into the API Worker deployment.
+The Vite build writes a Cloudflare Pages `dist/_headers` file containing exact-path `Content-Type` overrides for every emitted `.js`/`.mjs` module and `.css` stylesheet. The API Worker configuration is preserved in `wrangler.worker.toml`; deploy it with `npm run deploy:worker` (or `wrangler deploy --config wrangler.worker.toml`). Do not run bare `wrangler deploy`, because the root Wrangler config now belongs to Pages.
 
 > **Troubleshooting:** If the browser requests `/src/main.tsx` and receives `application/octet-stream`, Pages is publishing the source repository instead of Vite's production output. TSX source is not browser-executable JavaScript. Correct the Pages output directory to `dist`, rebuild, and redeploy; do not try to serve `.tsx` as JavaScript.
 
-For a manual preview deployment, run `npm run deploy:pages:preview`. This builds the app and uploads only `dist` to the `mime-fix-preview` branch. Verify the deployed HTML points at `/assets/index-*.js` and inspect the bundle response headers (`application/javascript` for JS and `text/css` for CSS). Use the Pages project's configured production branch for production deployment; leave the Worker deployment command and `wrangler.toml` unchanged.
+For a manual preview deployment, run `npm run deploy:pages:preview`. This builds the app and uploads only `dist` to the `mime-fix-preview` branch. Verify the deployed HTML points at `/assets/index-*.js` and inspect the bundle response headers (`application/javascript` for JS and `text/css` for CSS). Git-integrated Pages deployments should use the root Pages Wrangler config and the repository-root build command above; use the Pages project's configured production branch for production deployment.
 
 ---
 

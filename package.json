@@ -8,6 +8,7 @@
     "start": "node server.ts",
     "build": "vite build",
     "deploy:pages:preview": "npm run build && npx wrangler pages deploy dist --project-name offerletter-kalvi40 --branch mime-fix-preview",
+    "deploy:worker": "npx wrangler deploy --config wrangler.worker.toml",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"
