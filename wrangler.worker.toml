@@ -8,17 +8,17 @@ SUPABASE_STORAGE_BUCKET = "offer-letters"
 ALLOWED_ORIGIN = "https://offerletter-kalvi40.pages.dev"
 APP_URL = "https://offerletter-kalvi40.pages.dev"
 
-# Uncomment after creating Cloudflare Queue:
+# Create this queue in the Cloudflare account before deploying:
 # `npx wrangler queues create kalvi40-email-queue`
-# [[queues.producers]]
-# queue = "kalvi40-email-queue"
-# binding = "EMAIL_QUEUE"
-#
-# [[queues.consumers]]
-# queue = "kalvi40-email-queue"
-# max_batch_size = 5
-# max_batch_timeout = 10
-# max_retries = 3
+[[queues.producers]]
+queue = "kalvi40-email-queue"
+binding = "EMAIL_QUEUE"
+
+[[queues.consumers]]
+queue = "kalvi40-email-queue"
+max_batch_size = 5
+max_batch_timeout = 10
+max_retries = 3
 
 # Required Wrangler secrets/environment:
 # - JWT_SECRET (Worker-generated HS256 token signing key; keep consistent across deployments)

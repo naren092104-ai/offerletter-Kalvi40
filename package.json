@@ -11,6 +11,7 @@
     "deploy:worker": "npx wrangler deploy --config wrangler.worker.toml",
     "dev:worker": "npx wrangler dev --config wrangler.worker.toml",
     "check:worker": "npx wrangler deploy --config wrangler.worker.toml --dry-run",
+    "test:worker": "tsx --test worker/index.test.ts worker/smtp.test.ts",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"
