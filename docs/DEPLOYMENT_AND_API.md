@@ -43,11 +43,11 @@ npm run deploy:worker
 
 ### B. Cloudflare Pages (Frontend)
 1. Connect repository to Cloudflare Pages.
-2. Use the V2 build system, set the project root directory to `/` (repository root), and build command to `npm run build`. The root `wrangler.toml` now declares `pages_build_output_dir = "./dist"`, making `dist` the Pages output instead of the repository root.
+2. In **Settings → Builds & deployments → Build configurations**, set the root directory to `/` (repository root) and **Build command** to `npm run build`. The root `wrangler.toml` declares `pages_build_output_dir = "./dist"` for the Pages output directory; Wrangler does not set the Git build command.
 3. Set environment variable `VITE_API_BASE_URL` to the URL of the deployed API service when it is on a different origin.
-4. Redeploy after changing these settings. The published root `index.html` must reference a hashed `/assets/index-*.js` bundle; it must not reference `/src/main.tsx`.
+4. Ensure the project uses the V2 build system, save settings, and retry/redeploy. The build log must show `npm run build` rather than `No build command specified`; the published root `index.html` must reference a hashed `/assets/index-*.js` bundle, not `/src/main.tsx`.
 
-The Vite build writes a Cloudflare Pages `dist/_headers` file containing exact-path `Content-Type` overrides for every emitted `.js`/`.mjs` module and `.css` stylesheet. The API Worker configuration is preserved in `wrangler.worker.toml`; deploy it with `npm run deploy:worker` (or `wrangler deploy --config wrangler.worker.toml`). Do not run bare `wrangler deploy`, because the root Wrangler config now belongs to Pages.
+The Vite build writes a Cloudflare Pages `dist/_headers` file containing exact-path `Content-Type` overrides for every emitted `.js`/`.mjs` module and `.css` stylesheet. The provided failed build log shows the current blocker is **not the MIME rule**: Cloudflare skipped the build because no build command was configured, then failed because `dist` did not exist. Set the Pages dashboard build command to `npm run build` before judging the MIME fix. The API Worker configuration is preserved in `wrangler.worker.toml`; deploy it with `npm run deploy:worker` (or `wrangler deploy --config wrangler.worker.toml`). Do not run bare `wrangler deploy`, because the root Wrangler config now belongs to Pages.
 
 > **Troubleshooting:** If the browser requests `/src/main.tsx` and receives `application/octet-stream`, Pages is publishing the source repository instead of Vite's production output. TSX source is not browser-executable JavaScript. Correct the Pages output directory to `dist`, rebuild, and redeploy; do not try to serve `.tsx` as JavaScript.
 
