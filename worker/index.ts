@@ -111,7 +111,7 @@ function createPublishableSupabaseClient(env: Env, accessToken?: string) {
   });
 }
 
-function createPrivilegedSupabaseClient(env: Env) {
+function createPrivilegedSupabaseClient(env: Env, fetchImpl?: typeof fetch) {
   const secretKey = env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY;
   if (!env.SUPABASE_URL || !secretKey) {
     throw new Error('Privileged Supabase configuration is not available.');
@@ -122,33 +122,120 @@ function createPrivilegedSupabaseClient(env: Env) {
       autoRefreshToken: false,
       detectSessionInUrl: false,
     },
+    ...(fetchImpl ? { global: { fetch: fetchImpl } } : {}),
   });
 }
 
-async function probeSupabaseDatabase(env: Env): Promise<{ reachable: boolean; database: 'connected' | 'verification_pending'; detail: 'configured' | 'missing_configuration' | 'api_error' | 'table_missing' }> {
-  if (!env.SUPABASE_URL || !env.SUPABASE_PUBLISHABLE_KEY) {
+type SupabaseProbeDetail = 'configured' | 'missing_configuration' | 'api_error' | 'transport_error' | 'table_missing' | 'permission_denied' | 'api_key_rejected' | 'supabase_server_error';
+
+function sanitizeDiagnosticMessage(message: unknown): string | undefined {
+  if (typeof message !== 'string' || !message.trim()) return undefined;
+  return message
+    .replace(/sb_(?:secret|publishable)_[A-Za-z0-9_-]+/gi, '[REDACTED_API_KEY]')
+    .replace(/\bBearer\s+\S+/gi, 'Bearer [REDACTED]')
+    .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, '[REDACTED_JWT]')
+    .replace(/https?:\/\/\S+/gi, '[REDACTED_URL]')
+    .replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g, '[REDACTED_EMAIL]')
+    .slice(0, 240);
+}
+
+function categorizeSupabaseProbeError(status: number | undefined, code: string | undefined, message?: string): SupabaseProbeDetail {
+  if (code === 'PGRST205' || status === 404) return 'table_missing';
+  if (/forbidden use of secret api key|invalid api key|api key.*invalid/i.test(message || '')) return 'api_key_rejected';
+  if (code === '42501' || status === 403 || (status === 401 && code)) return 'permission_denied';
+  if (status === 401) return 'api_key_rejected';
+  if (status !== undefined && status >= 500) return 'supabase_server_error';
+  if (status === undefined && !code) return 'transport_error';
+  return 'api_error';
+}
+
+async function probeSupabaseDatabase(env: Env): Promise<{
+  reachable: boolean;
+  database: 'connected' | 'verification_pending';
+  detail: SupabaseProbeDetail;
+  status?: number;
+  code?: string;
+  diagnostic?: string;
+}> {
+  const serviceKey = env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!env.SUPABASE_URL || !serviceKey) {
+    console.warn(JSON.stringify({
+      event: 'supabase_health_probe',
+      category: 'missing_configuration',
+      hasSupabaseUrl: Boolean(env.SUPABASE_URL),
+      hasPrivilegedSupabaseKey: Boolean(serviceKey),
+    }));
     return { reachable: false, database: 'verification_pending', detail: 'missing_configuration' };
   }
 
   try {
-    const supabase = createPublishableSupabaseClient(env);
-    const { error, status } = await supabase
+    // The existing schema intentionally does not grant anon SELECT on candidates.
+    // Probe with the same server-only role used by the Express backend; never log the key.
+    let responseStatus: number | undefined;
+    const fetchWithStatus: typeof fetch = async (input, init) => {
+      const response = await fetch(input, init);
+      responseStatus = response.status;
+      return response;
+    };
+    const supabase = createPrivilegedSupabaseClient(env, fetchWithStatus);
+    const { error } = await supabase
       .from('candidates')
       .select('id', { count: 'exact', head: true })
       .limit(1);
 
     if (!error) {
+      console.info(JSON.stringify({
+        event: 'supabase_health_probe',
+        category: 'configured',
+        status: responseStatus ?? 200,
+        code: null,
+      }));
       return { reachable: true, database: 'connected', detail: 'configured' };
     }
 
-    const missingTable = error.code === 'PGRST205' || status === 404;
+    const status = responseStatus;
+    const code = typeof error.code === 'string' ? error.code : undefined;
+    const diagnostic = sanitizeDiagnosticMessage(error.message);
+    const detail = categorizeSupabaseProbeError(status, code, diagnostic);
+    console.warn(JSON.stringify({
+      event: 'supabase_health_probe',
+      category: detail,
+      status: status ?? null,
+      code: code ?? null,
+      diagnostic: diagnostic ?? null,
+    }));
     return {
       reachable: true,
       database: 'verification_pending',
-      detail: missingTable ? 'table_missing' : 'api_error',
+      detail,
+      ...(status === undefined ? {} : { status }),
+      ...(code === undefined ? {} : { code }),
+      ...(diagnostic ? { diagnostic } : {}),
     };
-  } catch {
-    return { reachable: false, database: 'verification_pending', detail: 'api_error' };
+  } catch (error) {
+    const status = typeof error === 'object' && error !== null && 'status' in error && typeof error.status === 'number'
+      ? error.status
+      : undefined;
+    const code = typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string'
+      ? error.code
+      : undefined;
+    const diagnostic = sanitizeDiagnosticMessage(error instanceof Error ? error.message : undefined);
+    const detail = categorizeSupabaseProbeError(status, code, diagnostic);
+    console.warn(JSON.stringify({
+      event: 'supabase_health_probe',
+      category: detail,
+      status: status ?? null,
+      code: code ?? null,
+      diagnostic: diagnostic ?? null,
+    }));
+    return {
+      reachable: false,
+      database: 'verification_pending',
+      detail,
+      ...(status === undefined ? {} : { status }),
+      ...(code === undefined ? {} : { code }),
+      ...(diagnostic ? { diagnostic } : {}),
+    };
   }
 }
 
@@ -266,12 +353,12 @@ export default {
 
     if (url.pathname === '/api/health/supabase' && request.method === 'GET') {
       const probe = await probeSupabaseDatabase(env);
-      if (!env.SUPABASE_URL || !env.SUPABASE_PUBLISHABLE_KEY) {
+      if (!env.SUPABASE_URL || !(env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY)) {
         return jsonResponse({
           success: false,
           database: 'verification_pending',
           provider: 'supabase',
-          error: 'Supabase configuration is incomplete.',
+          reason: probe.detail,
         }, 503, origin);
       }
       if (probe.database === 'connected') {
@@ -282,6 +369,9 @@ export default {
         database: 'verification_pending',
         provider: 'supabase',
         reason: probe.detail,
+        ...(probe.status === undefined ? {} : { status: probe.status }),
+        ...(probe.code === undefined ? {} : { code: probe.code }),
+        ...(probe.diagnostic === undefined ? {} : { diagnostic: probe.diagnostic }),
       }, 503, origin);
     }
 
