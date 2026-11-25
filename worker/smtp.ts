@@ -218,7 +218,7 @@ export async function sendSmtpEmail(config: SmtpConfig, payload: SmtpPayload, co
     await session.command(`MAIL FROM:<${config.senderEmail}>`);
     const recipients = [payload.toEmail, ...payload.ccEmails]
       .map((email) => email.trim().toLowerCase())
-      .filter((email, index, list) => email && email !== config.senderEmail.toLowerCase() && list.indexOf(email) === index);
+      .filter((email, index, list) => email && list.indexOf(email) === index);
     for (const recipient of recipients) await session.command(`RCPT TO:<${recipient}>`);
     await session.command('DATA');
     const message = makeMimeMessage(config, payload, messageId).replace(/(^|\r\n)\./g, '$1..');

@@ -17,7 +17,6 @@ export function AuthView({ initialResetToken = '', onAuthenticated }: AuthViewPr
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [generatedToken, setGeneratedToken] = useState<string | null>(null);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -41,18 +40,13 @@ export function AuthView({ initialResetToken = '', onAuthenticated }: AuthViewPr
     e.preventDefault();
     setError(null);
     setNotice(null);
-    setGeneratedToken(null);
     setLoading(true);
     try {
-      const res = await apiRequest<{ message: string; resetToken?: string }>('/api/auth/forgot-password', {
+      const res = await apiRequest<{ message: string }>('/api/auth/forgot-password', {
         method: 'POST',
         body: JSON.stringify({ email }),
       });
       setNotice(res.message);
-      if (res.resetToken) {
-        setGeneratedToken(res.resetToken);
-        setResetToken(res.resetToken);
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to request password reset.');
     } finally {
@@ -222,21 +216,6 @@ export function AuthView({ initialResetToken = '', onAuthenticated }: AuthViewPr
               {notice && (
                 <div className="mb-4 p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-[#16A36A] space-y-2">
                   <div>{notice}</div>
-                  {generatedToken && (
-                    <div className="pt-1">
-                      <div className="font-semibold text-[#10243A]">One-Time Reset Token:</div>
-                      <code className="block mt-1 p-2 bg-white border border-emerald-200 rounded font-mono text-[11px] break-all text-[#10243A]">
-                        {generatedToken}
-                      </code>
-                      <button
-                        type="button"
-                        onClick={() => setMode('reset')}
-                        className="mt-2 text-xs font-semibold text-[#2563EB] hover:underline"
-                      >
-                        Proceed to Reset Password
-                      </button>
-                    </div>
-                  )}
                 </div>
               )}
 

@@ -399,7 +399,7 @@ function bytesToBase64(bytes: Uint8Array): string {
 
 function base64UrlDecode(value: string): Uint8Array {
   const padded = value.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - value.length % 4) % 4);
-  return Uint8Array.from(atob(padded), (char) => char.charCodeAt(0));
+  return Uint8Array.from(atob(padded), (c) => c.charCodeAt(0));
 }
 
 async function deriveEmailCredentialKey(secret: string, usages: KeyUsage[]): Promise<CryptoKey> {
@@ -885,10 +885,28 @@ export default {
       } catch (activityError) {
         return jsonResponse({ error: activityError instanceof Error ? activityError.message : 'Unable to write activity log.' }, 503, origin);
       }
+      const settings = await loadSettings(supabase);
+      const appUrl = (env.APP_URL || request.headers.get('Origin') || 'https://offerletter-kalvi40.pages.dev').replace(/\/$/, '');
+      const resetUrl = `${appUrl}/?resetToken=${resetToken}`;
+      const result = await sendWorkerEmail(env, settings, {
+        toEmail: admin.email,
+        toName: admin.name,
+        ccEmails: [],
+        subject: 'Kalvi40 Administrator Password Reset',
+        bodyText: `Hello ${admin.name},\n\nA password reset was requested for your Kalvi40 administrator account.\n\nUse this link within 30 minutes to reset your password:\n${resetUrl}\n\nIf you did not request this, ignore this message.`,
+        attachmentFilename: 'Kalvi40_Password_Reset.txt',
+        attachmentBytes: new TextEncoder().encode(`Password reset link: ${resetUrl}`),
+      });
+      if (!result.success) {
+        return jsonResponse({
+          message: 'The reset link could not be emailed. Please verify SMTP settings and try again.',
+          emailed: false,
+          error: result.errorMessage || 'SMTP delivery failed.',
+        }, 503, origin);
+      }
       return jsonResponse({
-        message: 'Email provider is not yet configured; use the secure one-time reset token below to complete your reset.',
-        emailed: false,
-        resetToken,
+        message: 'Password reset instructions have been emailed to your administrator address.',
+        emailed: true,
       }, 200, origin);
     }
 
@@ -2428,7 +2446,6 @@ export default {
 
     if (userMatch && request.method === 'DELETE') {
       const id = Number(userMatch[1]);
-      if (id === Number(session.id)) return jsonResponse({ error: 'You cannot delete your currently signed-in account.' }, 400, origin);
       const { data: admin, error: lookupError } = await supabase.from('admins').select('id,name,email').eq('id', id).maybeSingle();
       if (lookupError) return jsonResponse({ error: lookupError.message }, 503, origin);
       if (!admin) return jsonResponse({ error: 'Administrator not found.' }, 404, origin);
