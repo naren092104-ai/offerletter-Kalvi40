@@ -420,7 +420,6 @@ export function OfferLettersPage({ onNavigate }: OfferLettersPageProps) {
         candidate={sendTarget}
         onClose={() => setSendTarget(null)}
         onSent={() => void loadCandidates()}
-        onNavigateToEmailConfig={() => onNavigate('email-config')}
       />
     </div>
   );

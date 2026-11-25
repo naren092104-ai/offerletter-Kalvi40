@@ -13,7 +13,6 @@ import {
   BarChart3,
   ScrollText,
   Settings,
-  ServerCog,
   UserCog,
   PanelLeftClose,
   PanelLeftOpen,
@@ -34,7 +33,7 @@ export type NavPageId =
   | 'reports'
   | 'logs'
   | 'settings'
-  | 'email-config'
+  | 'user-management'
   | 'profile';
 
 interface NavGroup {
@@ -78,7 +77,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Settings',
     items: [
       { id: 'settings', label: 'General Settings', icon: Settings },
-      { id: 'email-config', label: 'Email Configuration', icon: ServerCog },
+      { id: 'user-management', label: 'User Management', icon: UserCog },
       { id: 'profile', label: 'Admin Profile', icon: UserCog },
     ],
   },

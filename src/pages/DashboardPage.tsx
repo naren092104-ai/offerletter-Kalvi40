@@ -3,10 +3,8 @@ import {
   UserPlus,
   FileSpreadsheet,
   FileText,
-  Send,
-  AlertTriangle,
-  ArrowRight,
   RefreshCw,
+  Send,
 } from 'lucide-react';
 import {
   BarChart,
@@ -139,27 +137,6 @@ export function DashboardPage({ onNavigate }: DashboardPageProps) {
           </button>
         </div>
       </div>
-
-      {/* Email Provider Readiness Notice */}
-      {data && !data.providerConfigured && (
-        <div className="bg-amber-50/80 border border-amber-200 rounded-xl px-5 py-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="w-4 h-4 text-[#D97706] shrink-0 mt-0.5" />
-            <div className="text-xs text-slate-700">
-              <span className="font-semibold text-[#10243A]">SMTP email delivery not configured.</span> Add your SMTP
-              server credentials before dispatching individual or bulk appointment emails.
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => onNavigate('email-config')}
-            className="inline-flex items-center gap-1 text-xs font-semibold text-[#2563EB] hover:underline whitespace-nowrap shrink-0"
-          >
-            <span>Configure Email Provider</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      )}
 
       {/* 5-Column KPI Strip (Single unified container with hairline dividers) */}
       <div className="bg-white border border-slate-200 rounded-xl grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 divide-y sm:divide-y-0 sm:divide-x divide-slate-200">

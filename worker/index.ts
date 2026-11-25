@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Phase 1 Cloudflare Worker API for Kalvi40.
  * Admin login uses the existing Supabase admins table and custom bcrypt/JWT auth.
  * Other existing Express API routes remain in place and are not yet fully ported.
@@ -25,6 +25,7 @@ export interface Env {
   SUPABASE_SECRET_KEY?: string;
   SUPABASE_SERVICE_ROLE_KEY?: string;
   SMTP_PASS?: string;
+  APP_URL?: string;
   SUPABASE_STORAGE_BUCKET: string;
   ALLOWED_ORIGIN?: string;
   EMAIL_QUEUE?: {
@@ -439,7 +440,12 @@ async function getSmtpConfig(settings: Map<string, string>, env: Env): Promise<S
   const encryptedPassword = settings.get('smtp_pass_encrypted') || '';
   let password = env.SMTP_PASS?.trim() || '';
   if (!password && encryptedPassword) password = await decryptEmailCredential(encryptedPassword, env.JWT_SECRET?.trim() || '');
-  if (!host || !username || !senderEmail || !password) return null;
+  const passwordConfigured = Boolean(password);
+  if (!host || !username || !senderEmail || !passwordConfigured) return null;
+  const credentialsConfigured = Boolean(host && username && passwordConfigured && senderEmail);
+  const verified = settings.get('smtp_verified') === 'true';
+  const legacyCompatible = credentialsConfigured && !settings.has('smtp_verified');
+  if (!verified && !legacyCompatible) return null;
   return {
     host,
     port: Math.max(1, Math.min(65535, Number(settings.get('smtp_port') || 587) || 587)),
@@ -524,6 +530,9 @@ function publicEmailConfig(settings: Map<string, string>, env: Env) {
   const host = settings.get('smtp_host') || 'smtp.gmail.com';
   const username = settings.get('smtp_user') || '';
   const senderEmail = settings.get('sender_email') || 'prem@bumbleb.org.in';
+  const credentialsConfigured = Boolean(host && username && passwordConfigured && senderEmail);
+  const verified = settings.get('smtp_verified') === 'true';
+  const legacyCompatible = credentialsConfigured && !settings.has('smtp_verified');
   return {
     email_provider: 'smtp',
     sender_name: settings.get('sender_name') || 'BumbleB Trust - Kalvi40',
@@ -536,7 +545,7 @@ function publicEmailConfig(settings: Map<string, string>, env: Env) {
     smtp_secure: settings.get('smtp_secure') === 'true',
     rate_limit_per_minute: Math.max(1, Number(settings.get('rate_limit_per_minute') || 45) || 45),
     max_retries: Math.max(0, Number(settings.get('max_retries') || 3) || 3),
-    provider_configured: Boolean(host && username && passwordConfigured && senderEmail),
+    provider_configured: verified || legacyCompatible,
   };
 }
 
@@ -702,7 +711,7 @@ async function probeSupabaseDatabase(env: Env): Promise<{
       detail,
       ...(status === undefined ? {} : { status }),
       ...(code === undefined ? {} : { code }),
-      ...(diagnostic ? { diagnostic } : {}),
+      ...(diagnostic === undefined ? {} : { diagnostic }),
     };
   } catch (error) {
     const status = typeof error === 'object' && error !== null && 'status' in error && typeof error.status === 'number'
@@ -1832,7 +1841,6 @@ export default {
         return jsonResponse({ error: 'Request body must be valid JSON.' }, 400, origin);
       }
       const email = body.email !== undefined ? String(body.email).trim().toLowerCase() : existing.email;
-      if (!validEmail(email)) return jsonResponse({ error: 'Invalid CC email address.' }, 400, origin);
       const patch = {
         email,
         label: body.label !== undefined ? String(body.label).trim() : existing.label,
@@ -2166,6 +2174,7 @@ export default {
       }
       const submittedPassword = typeof body.smtp_pass === 'string' ? body.smtp_pass.trim() : '';
       const values: Record<string, string> = { email_provider: 'smtp' };
+
       for (const key of ['sender_name', 'sender_email', 'reply_to', 'smtp_user']) {
         if (typeof body[key] === 'string') values[key] = String(body[key]).trim();
       }
@@ -2175,7 +2184,7 @@ export default {
       if (body.rate_limit_per_minute !== undefined) values.rate_limit_per_minute = String(Math.max(1, Math.min(300, Number(body.rate_limit_per_minute) || 45)));
       if (body.max_retries !== undefined) values.max_retries = String(Math.max(0, Math.min(5, Number(body.max_retries) || 3)));
       try {
-        if (submittedPassword && !submittedPassword.includes('••••')) {
+        if (submittedPassword && !submittedPassword.includes('â€¢â€¢â€¢â€¢')) {
           const jwtSecret = env.JWT_SECRET?.trim();
           if (!jwtSecret) return jsonResponse({ error: 'JWT_SECRET is required to encrypt the email credential.' }, 503, origin);
           const encrypted = await encryptEmailCredential(submittedPassword, jwtSecret);

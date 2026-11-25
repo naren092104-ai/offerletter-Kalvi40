@@ -381,6 +381,79 @@ export function createApiRouter(): express.Router {
     res.setHeader('Content-Disposition', 'attachment; filename="Kalvi40_Candidate_Import_Template.xlsx"');
     res.send(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }));
   });
+  router.get('/users', asyncRoute(async (req, res) => {
+    const supabase = requireSupabase();
+    const { data, error } = await supabase
+      .from('admins')
+      .select('id,name,email,role,designation,phone,last_login_at,created_at,updated_at')
+      .order('id', { ascending: true });
+    if (error) throw new Error(`Unable to load administrator users: ${error.message}`);
+    res.json({ items: data ?? [] });
+  }));
+
+  router.post('/users', asyncRoute(async (req, res) => {
+    const name = String(req.body?.name || '').trim();
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const password = String(req.body?.password || '');
+    const role = String(req.body?.role || 'Administrator').trim() || 'Administrator';
+    const designation = String(req.body?.designation || '').trim();
+    const phone = String(req.body?.phone || '').trim();
+    if (!name || !email || password.length < 8) {
+      res.status(400).json({ error: 'Name, email, and a password of at least 8 characters are required.' });
+      return;
+    }
+    const supabase = requireSupabase();
+    const { data: existing, error: lookupError } = await supabase.from('admins').select('id').eq('email', email).maybeSingle();
+    if (lookupError) throw new Error(lookupError.message);
+    if (existing) { res.status(409).json({ error: 'An administrator already uses this email.' }); return; }
+    const timestamp = now();
+    const { data, error } = await supabase.from('admins').insert({
+      name, email, password_hash: bcrypt.hashSync(password, 10), role, designation, phone,
+      created_at: timestamp, updated_at: timestamp,
+    }).select('id,name,email,role,designation,phone,last_login_at,created_at,updated_at').single();
+    if (error) throw new Error(`Unable to create administrator: ${error.message}`);
+    await recordActivity(req, 'USER_CREATED', 'admin', `Created administrator ${name} (${email})`, data.id);
+    res.status(201).json({ item: data, message: 'Administrator created successfully.' });
+  }));
+
+  router.put('/users/:id', asyncRoute(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id < 1) { res.status(400).json({ error: 'Invalid administrator ID.' }); return; }
+    const name = String(req.body?.name || '').trim();
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const role = String(req.body?.role || '').trim();
+    const designation = String(req.body?.designation || '').trim();
+    const phone = String(req.body?.phone || '').trim();
+    const password = String(req.body?.password || '');
+    if (!name || !email) { res.status(400).json({ error: 'Name and email are required.' }); return; }
+    if (password && password.length < 8) { res.status(400).json({ error: 'The new password must be at least 8 characters.' }); return; }
+    const supabase = requireSupabase();
+    const { data: conflict, error: lookupError } = await supabase.from('admins').select('id').eq('email', email).neq('id', id).maybeSingle();
+    if (lookupError) throw new Error(lookupError.message);
+    if (conflict) { res.status(409).json({ error: 'Another administrator already uses this email.' }); return; }
+    const values: Record<string, unknown> = { name, email, designation, phone, updated_at: now() };
+    if (role) values.role = role;
+    if (password) values.password_hash = bcrypt.hashSync(password, 10);
+    const { data, error } = await supabase.from('admins').update(values).eq('id', id).select('id,name,email,role,designation,phone,last_login_at,created_at,updated_at').single();
+    if (error) throw new Error(`Unable to update administrator: ${error.message}`);
+    await recordActivity(req, 'USER_UPDATED', 'admin', `Updated administrator ${name} (${email})`, id);
+    res.json({ item: data, message: 'Administrator updated successfully.' });
+  }));
+
+  router.delete('/users/:id', asyncRoute(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id < 1) { res.status(400).json({ error: 'Invalid administrator ID.' }); return; }
+    if (id === req.admin!.id) { res.status(400).json({ error: 'You cannot delete your currently signed-in account.' }); return; }
+    const supabase = requireSupabase();
+    const { data: admin, error: lookupError } = await supabase.from('admins').select('id,name,email').eq('id', id).maybeSingle();
+    if (lookupError) throw new Error(lookupError.message);
+    if (!admin) { res.status(404).json({ error: 'Administrator not found.' }); return; }
+    const { error } = await supabase.from('admins').delete().eq('id', id);
+    if (error) throw new Error(`Unable to delete administrator: ${error.message}`);
+    await recordActivity(req, 'USER_DELETED', 'admin', `Deleted administrator ${admin.name} (${admin.email})`, id);
+    res.json({ message: 'Administrator deleted successfully.' });
+  }));
+
   router.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => { if (!res.headersSent) sendError(res, error); });
   return router;
 }

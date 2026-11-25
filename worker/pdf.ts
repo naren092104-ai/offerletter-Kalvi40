@@ -4,6 +4,7 @@ import { formatDateDDMMYYYY, normalizeSchoolName, sanitizeOfferFilename, type Of
 const ink = rgb(0.11, 0.14, 0.2);
 const navy = rgb(0.063, 0.141, 0.227);
 const blue = rgb(0.21, 0.36, 0.62);
+const orange = rgb(0.93, 0.29, 0.16);
 
 function sanitizeText(value: unknown): string {
   return String(value ?? '')
@@ -67,6 +68,7 @@ export async function buildOfferLetterPdfBuffer(
   candidate: Record<string, unknown>,
   template: OfferLetterTemplate,
   signature?: { bytes: Uint8Array; mime: string; heightPt: number } | null,
+  logo?: Uint8Array | null,
 ): Promise<{ bytes: Uint8Array; filename: string }> {
   const pdf = await PDFDocument.create();
   const regular = await pdf.embedFont(StandardFonts.TimesRoman);
@@ -93,6 +95,15 @@ export async function buildOfferLetterPdfBuffer(
   let page = pdf.addPage([width, height]);
   let y = 785;
 
+  let logoImage: Awaited<ReturnType<PDFDocument['embedPng']>> | null = null;
+  if (logo) {
+    try {
+      logoImage = await pdf.embedPng(logo);
+    } catch {
+      logoImage = null;
+    }
+  }
+
   const drawHeader = (target: PDFPage) => {
     target.drawText(sanitizeText(template.header_name), { x: margin, y: 785, size: 9, font: bold, color: ink });
     target.drawText(sanitizeText(template.header_role), { x: margin, y: 771, size: 10, font: italic, color: ink });
@@ -102,12 +113,24 @@ export async function buildOfferLetterPdfBuffer(
     const brand = sanitizeText(template.brand_title || 'BumbleB');
     target.drawText(brand, { x: (width - bold.widthOfTextAtSize(brand, 22)) / 2, y: 744, size: 22, font: bold, color: navy });
     const subtitle = sanitizeText(template.brand_subtitle);
-    if (subtitle) target.drawText(subtitle, { x: (width - bold.widthOfTextAtSize(subtitle, 8)) / 2, y: 730, size: 8, font: bold, color: navy });
+    if (subtitle && !logoImage) target.drawText(subtitle, { x: (width - bold.widthOfTextAtSize(subtitle, 8)) / 2, y: 730, size: 8, font: bold, color: navy });
     const regn = sanitizeText(template.trust_regn);
     if (regn) target.drawText(regn, { x: (width - regular.widthOfTextAtSize(regn, 9)) / 2, y: 707, size: 9, font: regular, color: ink });
     const address = sanitizeText(template.trust_address);
     if (address) target.drawText(address.slice(0, 110), { x: (width - regular.widthOfTextAtSize(address.slice(0, 110), 9)) / 2, y: 693, size: 9, font: regular, color: navy });
     target.drawLine({ start: { x: 60, y: 684 }, end: { x: width - 60, y: 684 }, thickness: 1, color: blue });
+    if (logoImage) {
+      const logoSize = logoImage.scaleToFit(92, 92);
+      target.drawImage(logoImage, {
+        x: (width - logoSize.width) / 2,
+        y: 675,
+        width: logoSize.width,
+        height: logoSize.height,
+      });
+    } else {
+      const brand = sanitizeText(template.brand_title || 'BumbleB');
+      target.drawText(brand, { x: (width - bold.widthOfTextAtSize(brand, 22)) / 2, y: 744, size: 22, font: bold, color: navy });
+    }
   };
   drawHeader(page);
   page.drawText(title, { x: (width - bold.widthOfTextAtSize(title, 11.5)) / 2, y: 659, size: 11.5, font: bold, color: ink });

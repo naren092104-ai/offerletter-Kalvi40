@@ -234,14 +234,9 @@ export function PreviewVerificationPage({ initialCandidateId, onNavigate }: Prev
       </div>
 
       {emailConfig && !emailConfig.provider_configured && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-3 flex items-center justify-between gap-4 text-xs">
-          <div className="flex items-center gap-2 text-slate-700">
-            <AlertTriangle className="w-4 h-4 text-[#D97706] shrink-0" />
-            <span>Configure SMTP credentials in Email Configuration to enable "Send Individual Offer".</span>
-          </div>
-          <button type="button" onClick={() => onNavigate('email-config')} className="font-semibold text-[#2563EB] hover:underline whitespace-nowrap">
-            Email Settings
-          </button>
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-3 text-xs flex items-center gap-2 text-slate-700">
+          <AlertTriangle className="w-4 h-4 text-[#D97706] shrink-0" />
+          <span>SMTP credentials are missing from the backend environment.</span>
         </div>
       )}
 

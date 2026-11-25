@@ -822,7 +822,6 @@ export function CandidatesPage({ openAddOnMount = false, onNavigate }: Candidate
         candidate={sendTarget}
         onClose={() => setSendTarget(null)}
         onSent={() => void fetchCandidates()}
-        onNavigateToEmailConfig={() => onNavigate('email-config')}
       />
     </div>
   );

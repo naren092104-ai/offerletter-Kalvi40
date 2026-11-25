@@ -24,14 +24,12 @@ interface SendIndividualOfferModalProps {
   candidate: Candidate | null;
   onClose: () => void;
   onSent?: () => void;
-  onNavigateToEmailConfig?: () => void;
 }
 
 export function SendIndividualOfferModal({
   candidate,
   onClose,
   onSent,
-  onNavigateToEmailConfig,
 }: SendIndividualOfferModalProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
@@ -186,18 +184,6 @@ export function SendIndividualOfferModal({
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                 <span>SMTP credentials are not configured yet. Configure Gmail/SMTP before sending.</span>
               </div>
-              {onNavigateToEmailConfig && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    onClose();
-                    onNavigateToEmailConfig();
-                  }}
-                  className="font-semibold text-[#2563EB] hover:underline whitespace-nowrap"
-                >
-                  Open Settings
-                </button>
-              )}
             </div>
           )}
 

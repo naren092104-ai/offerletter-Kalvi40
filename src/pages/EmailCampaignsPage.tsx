@@ -315,21 +315,11 @@ export function EmailCampaignsPage({ initialSelectedIds = [], onNavigate }: Emai
       </div>
 
       {!providerConfigured && (
-        <div className="bg-red-50 border border-red-200 rounded-xl px-5 py-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div className="flex items-start gap-2.5 text-xs text-[#DC4545]">
-            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-            <span>
-              <strong>Bulk sending blocked:</strong> No SMTP relay credentials configured. Real email
-              delivery requires valid SMTP credentials.
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={() => onNavigate('email-config')}
-            className="text-xs font-semibold text-[#2563EB] hover:underline whitespace-nowrap"
-          >
-            Configure Email Provider
-          </button>
+        <div className="bg-red-50 border border-red-200 rounded-xl px-5 py-3.5 flex items-center gap-3">
+          <AlertTriangle className="w-4 h-4 shrink-0 text-[#DC4545]" />
+          <span className="text-xs text-[#DC4545]">
+            <strong>Bulk sending blocked:</strong> SMTP relay credentials are missing from the backend environment.
+          </span>
         </div>
       )}
 
@@ -784,7 +774,6 @@ export function EmailCampaignsPage({ initialSelectedIds = [], onNavigate }: Emai
         candidate={individualSendTarget}
         onClose={() => setIndividualSendTarget(null)}
         onSent={() => void loadAll()}
-        onNavigateToEmailConfig={() => onNavigate('email-config')}
       />
     </div>
   );

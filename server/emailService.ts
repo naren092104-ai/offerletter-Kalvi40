@@ -60,10 +60,10 @@ export function isValidSmtpHost(host: string): boolean {
 }
 
 export function isProviderConfigured(): boolean {
-  const host = getSetting('smtp_host', '').trim();
-  const user = getSetting('smtp_user', '').trim();
+  const host = (getSetting('smtp_host', '') || process.env.SMTP_HOST || 'smtp.gmail.com').trim();
+  const user = (getSetting('smtp_user', '') || process.env.SMTP_USER || '').trim();
   const pass = (getRuntimeSecret('smtp_pass') || process.env.SMTP_PASS || '').trim();
-  const sender = getSetting('sender_email', '').trim();
+  const sender = (getSetting('sender_email', '') || process.env.SMTP_SENDER_EMAIL || process.env.SMTP_USER || '').trim();
   return Boolean(isValidSmtpHost(host) && user && pass && sender);
 }
 
@@ -72,14 +72,14 @@ export function getPublicEmailConfig(): EmailConfigPublic {
 
   return {
     email_provider: 'smtp',
-    sender_name: getSetting('sender_name', 'BumbleB Trust - Kalvi40'),
-    sender_email: getSetting('sender_email', 'prem@bumbleb.org.in'),
-    reply_to: getSetting('reply_to', 'prem@bumbleb.org.in'),
-    smtp_host: getSetting('smtp_host', 'smtp.gmail.com'),
-    smtp_port: getSetting('smtp_port', '587'),
-    smtp_user: getSetting('smtp_user', ''),
+    sender_name: getSetting('sender_name', '') || process.env.SMTP_SENDER_NAME || 'BumbleB Trust - Kalvi40',
+    sender_email: getSetting('sender_email', '') || process.env.SMTP_SENDER_EMAIL || process.env.SMTP_USER || 'prem@bumbleb.org.in',
+    reply_to: getSetting('reply_to', '') || process.env.SMTP_SENDER_EMAIL || process.env.SMTP_USER || 'prem@bumbleb.org.in',
+    smtp_host: getSetting('smtp_host', '') || process.env.SMTP_HOST || 'smtp.gmail.com',
+    smtp_port: getSetting('smtp_port', '') || process.env.SMTP_PORT || '587',
+    smtp_user: getSetting('smtp_user', '') || process.env.SMTP_USER || '',
     smtp_pass_set: Boolean(smtpPass),
-    smtp_secure: getSetting('smtp_secure', 'false') === 'true',
+    smtp_secure: (getSetting('smtp_secure', '') || process.env.SMTP_SECURE || 'false') === 'true',
     rate_limit_per_minute: Math.max(1, Number(getSetting('rate_limit_per_minute', '45')) || 45),
     max_retries: Math.max(0, Number(getSetting('max_retries', '3')) || 3),
     provider_configured: isProviderConfigured(),

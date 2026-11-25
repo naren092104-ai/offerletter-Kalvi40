@@ -17,8 +17,8 @@ import { SendingHistoryPage } from './pages/SendingHistoryPage';
 import { ReportsAnalyticsPage } from './pages/ReportsAnalyticsPage';
 import { ActivityLogsPage } from './pages/ActivityLogsPage';
 import { GeneralSettingsPage } from './pages/GeneralSettingsPage';
-import { EmailConfigurationPage } from './pages/EmailConfigurationPage';
 import { AdminProfilePage } from './pages/AdminProfilePage';
+import { UserManagementPage } from './pages/UserManagementPage';
 import type { AdminUser } from './types/kalvi40';
 
 interface NavContext {
@@ -124,10 +124,7 @@ function Kalvi40Shell() {
           {activePage === 'reports' && <ReportsAnalyticsPage />}
           {activePage === 'logs' && <ActivityLogsPage />}
           {activePage === 'settings' && <GeneralSettingsPage />}
-          {activePage === 'email-config' && <EmailConfigurationPage />}
-          {activePage === 'profile' && (
-            <AdminProfilePage admin={admin} onAdminUpdated={setAdmin} onLogout={handleLogout} />
-          )}
+          {activePage === 'user-management' && <UserManagementPage currentAdmin={admin} />}
         </main>
       </div>
     </div>
