@@ -61,14 +61,32 @@ function drawFooter(page: PDFPage, width: number, template: OfferLetterTemplate,
   const left = sanitizeText(template.footer_left_url);
   const right = sanitizeText(template.footer_right_url);
   const separator = left && right ? ' | ' : '';
-  const totalWidth = (left ? font.widthOfTextAtSize(left, 10) : 0)
-    + (separator ? font.widthOfTextAtSize(separator, 10) : 0)
-    + (right ? font.widthOfTextAtSize(right, 10) : 0);
-  let cursorX = width - 64 - totalWidth;
-  const footerY = 58;
+  const totalWidth = (left ? font.widthOfTextAtSize(left, 8.5) : 0)
+    + (separator ? font.widthOfTextAtSize(separator, 8.5) : 0)
+    + (right ? font.widthOfTextAtSize(right, 8.5) : 0);
+  const margin = 64;
+  let cursorX = width - margin - totalWidth;
+  const footerY = 50;
+
   if (logoImage) {
-    const logoSize = logoImage.scaleToFit(56, 56);
-    page.drawImage(logoImage, { x: 62, y: 44, width: logoSize.width, height: logoSize.height });
+    const logoSize = logoImage.scaleToFit(46, 46);
+    page.drawImage(logoImage, { x: margin - 2, y: 38, width: logoSize.width, height: logoSize.height });
+  }
+
+  if (left) {
+    page.drawText(left, { x: cursorX, y: footerY, size: 8.5, font, color: linkBlue });
+    const leftWidth = font.widthOfTextAtSize(left, 8.5);
+    page.drawLine({ start: { x: cursorX, y: footerY - 1.2 }, end: { x: cursorX + leftWidth, y: footerY - 1.2 }, thickness: 0.5, color: linkBlue });
+    cursorX += leftWidth;
+  }
+  if (separator) {
+    page.drawText(separator, { x: cursorX, y: footerY, size: 8.5, font, color: ink });
+    cursorX += font.widthOfTextAtSize(separator, 8.5);
+  }
+  if (right) {
+    page.drawText(right, { x: cursorX, y: footerY, size: 8.5, font, color: linkBlue });
+    const rightWidth = font.widthOfTextAtSize(right, 8.5);
+    page.drawLine({ start: { x: cursorX, y: footerY - 1.2 }, end: { x: cursorX + rightWidth, y: footerY - 1.2 }, thickness: 0.5, color: linkBlue });
   }
 }
 
@@ -121,43 +139,53 @@ export async function buildOfferLetterPdfBuffer(
     target.drawText(`: ${sanitizeText(template.trust_email)}`, { x: 410, y: 775, size: 9, font: regular, color: ink });
     target.drawText('Web-site', { x: 368, y: 763, size: 9, font: regular, color: ink });
     target.drawText(`: ${sanitizeText(template.trust_website)}`, { x: 410, y: 763, size: 9, font: regular, color: ink });
-    const regn = sanitizeText(template.trust_regn);
-    if (regn) target.drawText(regn, { x: (width - regular.widthOfTextAtSize(regn, 9)) / 2, y: 707, size: 9, font: regular, color: ink });
-    const address = sanitizeText(template.trust_address);
-    if (address) target.drawText(address.slice(0, 110), { x: (width - regular.widthOfTextAtSize(address.slice(0, 110), 9)) / 2, y: 693, size: 9, font: regular, color: navy });
-    if (logoImage) {
-      const logoSize = logoImage.scaleToFit(92, 92);
-      target.drawImage(logoImage, {
-        x: (width - logoSize.width) / 2,
-        y: 675,
-        width: logoSize.width,
-        height: logoSize.height,
-      });
+
+    const brand = sanitizeText(template.brand_title || 'BumbleB');
+    target.drawText(brand, { x: (width - bold.widthOfTextAtSize(brand, 24)) / 2, y: 704, size: 24, font: bold, color: navy });
+    if (template.brand_subtitle) {
+      const subtitle = sanitizeText(template.brand_subtitle);
+      target.drawText(subtitle, { x: (width - regular.widthOfTextAtSize(subtitle, 7.5)) / 2, y: 688, size: 7.5, font: regular, color: ink });
     }
+
+    const regn = sanitizeText(template.trust_regn);
+    if (regn) target.drawText(regn, { x: (width - regular.widthOfTextAtSize(regn, 8.5)) / 2, y: 674, size: 8.5, font: regular, color: ink });
+    const address = sanitizeText(template.trust_address);
+    if (address) {
+      const addressLines = wrapText(address, bold, 8.5, contentWidth - 20);
+      let addressY = 660;
+      for (const addressLine of addressLines) {
+        target.drawText(addressLine, { x: (width - bold.widthOfTextAtSize(addressLine, 8.5)) / 2, y: addressY, size: 8.5, font: bold, color: navy });
+        addressY -= 10;
+      }
+    }
+    target.drawLine({ start: { x: margin, y: 647 }, end: { x: width - margin, y: 647 }, thickness: 0.65, color: blue });
   };
+
   drawHeader(page);
-  page.drawText(title, { x: (width - bold.widthOfTextAtSize(title, 11.5)) / 2, y: 659, size: 11.5, font: bold, color: ink });
-  page.drawLine({ start: { x: 170, y: 657 }, end: { x: width - 170, y: 657 }, thickness: 0.5, color: ink });
-  y = 628;
-  page.drawText('Dear ', { x: margin, y, size: 10.5, font: regular, color: ink });
-  const dearWidth = regular.widthOfTextAtSize('Dear ', 10.5);
-  page.drawText(`${candidateName},`, { x: margin + dearWidth, y, size: 10.5, font: bold, color: ink });
-  y -= 14;
-  page.drawText(`${location}, ${district}`, { x: margin, y, size: 10.5, font: regular, color: ink });
-  y -= 14;
+  page.drawText(title, { x: (width - bold.widthOfTextAtSize(title, 11)) / 2, y: 624, size: 11, font: bold, color: ink });
+  const titleWidth = bold.widthOfTextAtSize(title, 11);
+  page.drawLine({ start: { x: (width - titleWidth) / 2, y: 622 }, end: { x: (width + titleWidth) / 2, y: 622 }, thickness: 0.8, color: ink });
+  page.drawText(joiningDate, { x: width - margin - bold.widthOfTextAtSize(joiningDate, 9.5), y: 606, size: 9.5, font: bold, color: ink });
+
+  y = 586;
+  page.drawText('Dear ', { x: margin, y, size: 9.5, font: regular, color: ink });
+  const dearWidth = regular.widthOfTextAtSize('Dear ', 9.5);
+  page.drawText(`${candidateName},`, { x: margin + dearWidth, y, size: 9.5, font: bold, color: ink });
+  y -= 13;
+  page.drawText(`${location}${district ? `, ${district}` : ''}`, { x: margin, y, size: 9.5, font: regular, color: ink });
+  y -= 12;
   const phone = sanitizeText(candidate.phone);
   if (phone) {
-    page.drawText(`Phone: ${phone}`, { x: margin, y, size: 10.5, font: regular, color: ink });
+    page.drawText(`Phone: ${phone}`, { x: margin, y, size: 9.5, font: regular, color: ink });
   }
-  y -= 14;
+  y -= 12;
   const emailLabel = 'Email ID: ';
-  page.drawText(emailLabel, { x: margin, y, size: 10.5, font: regular, color: ink });
-  page.drawText(email, { x: margin + regular.widthOfTextAtSize(emailLabel, 10.5), y, size: 10.5, font: regular, color: linkBlue });
-  page.drawText(joiningDate, { x: width - margin - bold.widthOfTextAtSize(joiningDate, 10.5), y: 628, size: 10.5, font: bold, color: ink });
-  y -= 30;
+  page.drawText(emailLabel, { x: margin, y, size: 9.5, font: regular, color: ink });
+  page.drawText(email, { x: margin + regular.widthOfTextAtSize(emailLabel, 9.5), y, size: 9.5, font: regular, color: linkBlue });
+  y -= 28;
   const greeting = sanitizeText(template.greeting);
   if (greeting) {
-    page.drawText(greeting, { x: margin, y, size: 10.5, font: bold, color: ink });
+    page.drawText(greeting, { x: margin, y, size: 9.5, font: bold, color: ink });
     y -= 22;
   }
   const drawParagraphLines = (target: PDFPage, lines: string[], startY: number) => {
@@ -203,6 +231,10 @@ export async function buildOfferLetterPdfBuffer(
       } catch {
         // An invalid or unsupported signature should not prevent PDF generation.
       }
+    }
+    if (text === template.closing) {
+      page.drawText('Prem Kumar Gokuladasan', { x: margin, y: y - 8, size: 9.5, font: bold, color: ink });
+      y -= 13;
     }
   }
   drawFooter(page, width, template, regular, logoImage);
