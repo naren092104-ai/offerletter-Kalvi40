@@ -4,6 +4,7 @@ import { formatDateDDMMYYYY, normalizeSchoolName, sanitizeOfferFilename, type Of
 const ink = rgb(0.11, 0.14, 0.2);
 const navy = rgb(0.063, 0.141, 0.227);
 const blue = rgb(0.21, 0.36, 0.62);
+const linkBlue = rgb(0.114, 0.306, 0.686);
 const orange = rgb(0.93, 0.29, 0.16);
 
 function sanitizeText(value: unknown): string {
@@ -59,9 +60,23 @@ function wrapText(text: string, font: Awaited<ReturnType<PDFDocument['embedFont'
 function drawFooter(page: PDFPage, width: number, template: OfferLetterTemplate, font: Awaited<ReturnType<PDFDocument['embedFont']>>): void {
   const left = sanitizeText(template.footer_left_url);
   const right = sanitizeText(template.footer_right_url);
-  const footer = [left, right].filter(Boolean).join(' | ');
-  if (footer) page.drawText(footer, { x: 64, y: 42, size: 9, font, color: blue });
-  page.drawLine({ start: { x: 64, y: 58 }, end: { x: width - 64, y: 58 }, thickness: 0.5, color: blue });
+  const separator = left && right ? ' | ' : '';
+  const totalWidth = (left ? font.widthOfTextAtSize(left, 10) : 0)
+    + (separator ? font.widthOfTextAtSize(separator, 10) : 0)
+    + (right ? font.widthOfTextAtSize(right, 10) : 0);
+  let cursorX = width - 64 - totalWidth;
+  const footerY = 58;
+  if (left) {
+    page.drawText(left, { x: cursorX, y: footerY, size: 10, font, color: linkBlue });
+    const leftWidth = font.widthOfTextAtSize(left, 10);
+    page.drawLine({ start: { x: cursorX, y: footerY - 1.5 }, end: { x: cursorX + leftWidth, y: footerY - 1.5 }, thickness: 0.6, color: linkBlue });
+    cursorX += leftWidth;
+  }
+  if (separator) {
+    page.drawText(separator, { x: cursorX, y: footerY, size: 10, font, color: ink });
+    cursorX += font.widthOfTextAtSize(separator, 10);
+  }
+  if (right) page.drawText(right, { x: cursorX, y: footerY, size: 10, font, color: linkBlue });
 }
 
 export async function buildOfferLetterPdfBuffer(
@@ -136,11 +151,22 @@ export async function buildOfferLetterPdfBuffer(
   page.drawText(title, { x: (width - bold.widthOfTextAtSize(title, 11.5)) / 2, y: 659, size: 11.5, font: bold, color: ink });
   page.drawLine({ start: { x: 170, y: 657 }, end: { x: width - 170, y: 657 }, thickness: 0.5, color: ink });
   y = 628;
-  page.drawText(`Dear ${candidateName},`, { x: margin, y, size: 10.5, font: bold, color: ink });
-  page.drawText(`${location}, ${district}`, { x: margin, y: y - 14, size: 9.5, font: regular, color: ink });
-  page.drawText(`Email ID: ${email}`, { x: margin, y: y - 27, size: 9.5, font: regular, color: ink });
-  page.drawText(joiningDate, { x: width - margin - regular.widthOfTextAtSize(joiningDate, 9.5), y, size: 9.5, font: regular, color: ink });
-  y -= 56;
+  page.drawText('Dear ', { x: margin, y, size: 10.5, font: regular, color: ink });
+  const dearWidth = regular.widthOfTextAtSize('Dear ', 10.5);
+  page.drawText(`${candidateName},`, { x: margin + dearWidth, y, size: 10.5, font: bold, color: ink });
+  y -= 14;
+  page.drawText(`${location}, ${district}`, { x: margin, y, size: 10.5, font: regular, color: ink });
+  y -= 14;
+  const phone = sanitizeText(candidate.phone);
+  if (phone) {
+    page.drawText(`Phone: ${phone}`, { x: margin, y, size: 10.5, font: regular, color: ink });
+  }
+  y -= 14;
+  const emailLabel = 'Email ID: ';
+  page.drawText(emailLabel, { x: margin, y, size: 10.5, font: regular, color: ink });
+  page.drawText(email, { x: margin + regular.widthOfTextAtSize(emailLabel, 10.5), y, size: 10.5, font: regular, color: linkBlue });
+  page.drawText(joiningDate, { x: width - margin - bold.widthOfTextAtSize(joiningDate, 10.5), y: 641, size: 10.5, font: bold, color: ink });
+  y -= 30;
   const greeting = sanitizeText(template.greeting);
   if (greeting) {
     page.drawText(greeting, { x: margin, y, size: 10.5, font: bold, color: ink });

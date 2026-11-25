@@ -2368,6 +2368,76 @@ export default {
       return jsonResponse({ queuedCount: jobs.length }, 202, origin);
     }
 
+    if (url.pathname === '/api/users' && request.method === 'GET') {
+      const { data, error } = await supabase
+        .from('admins')
+        .select('id,name,email,role,designation,phone,last_login_at,created_at,updated_at')
+        .order('id', { ascending: true });
+      if (error) return jsonResponse({ error: `Unable to load administrator users: ${error.message}` }, 503, origin);
+      return jsonResponse({ items: data ?? [] }, 200, origin);
+    }
+
+    if (url.pathname === '/api/users' && request.method === 'POST') {
+      let body: Record<string, unknown>;
+      try { body = await request.json() as Record<string, unknown>; } catch { return jsonResponse({ error: 'Request body must be valid JSON.' }, 400, origin); }
+      const name = String(body.name || '').trim();
+      const email = String(body.email || '').trim().toLowerCase();
+      const password = String(body.password || '');
+      const role = String(body.role || 'Administrator').trim() || 'Administrator';
+      const designation = String(body.designation || '').trim();
+      const phone = String(body.phone || '').trim();
+      if (!name || !validEmail(email) || password.length < 8) return jsonResponse({ error: 'Name, valid email, and a password of at least 8 characters are required.' }, 400, origin);
+      const { data: existing, error: lookupError } = await supabase.from('admins').select('id').eq('email', email).maybeSingle();
+      if (lookupError) return jsonResponse({ error: lookupError.message }, 503, origin);
+      if (existing) return jsonResponse({ error: 'An administrator already uses this email.' }, 409, origin);
+      const timestamp = now();
+      const passwordHash = await bcrypt.hash(password, 10);
+      const { data, error } = await supabase.from('admins').insert({
+        name, email, password_hash: passwordHash, role, designation, phone,
+        created_at: timestamp, updated_at: timestamp,
+      }).select('id,name,email,role,designation,phone,last_login_at,created_at,updated_at').single();
+      if (error) return jsonResponse({ error: `Unable to create administrator: ${error.message}` }, 503, origin);
+      await recordAdminActivity(supabase, request, session, 'USER_CREATED', 'admin', `Created administrator ${name} (${email})`, data.id);
+      return jsonResponse({ item: data, message: 'Administrator created successfully.' }, 201, origin);
+    }
+
+    const userMatch = url.pathname.match(/^\/api\/users\/(\d+)$/);
+    if (userMatch && request.method === 'PUT') {
+      const id = Number(userMatch[1]);
+      let body: Record<string, unknown>;
+      try { body = await request.json() as Record<string, unknown>; } catch { return jsonResponse({ error: 'Request body must be valid JSON.' }, 400, origin); }
+      const name = String(body.name || '').trim();
+      const email = String(body.email || '').trim().toLowerCase();
+      const role = String(body.role || '').trim();
+      const designation = String(body.designation || '').trim();
+      const phone = String(body.phone || '').trim();
+      const password = String(body.password || '');
+      if (!name || !validEmail(email)) return jsonResponse({ error: 'Name and valid email are required.' }, 400, origin);
+      if (password && password.length < 8) return jsonResponse({ error: 'The new password must be at least 8 characters.' }, 400, origin);
+      const { data: conflict, error: lookupError } = await supabase.from('admins').select('id').eq('email', email).neq('id', id).maybeSingle();
+      if (lookupError) return jsonResponse({ error: lookupError.message }, 503, origin);
+      if (conflict) return jsonResponse({ error: 'Another administrator already uses this email.' }, 409, origin);
+      const values: Record<string, unknown> = { name, email, designation, phone, updated_at: now() };
+      if (role) values.role = role;
+      if (password) values.password_hash = await bcrypt.hash(password, 10);
+      const { data, error } = await supabase.from('admins').update(values).eq('id', id).select('id,name,email,role,designation,phone,last_login_at,created_at,updated_at').single();
+      if (error) return jsonResponse({ error: `Unable to update administrator: ${error.message}` }, 503, origin);
+      await recordAdminActivity(supabase, request, session, 'USER_UPDATED', 'admin', `Updated administrator ${name} (${email})`, id);
+      return jsonResponse({ item: data, message: 'Administrator updated successfully.' }, 200, origin);
+    }
+
+    if (userMatch && request.method === 'DELETE') {
+      const id = Number(userMatch[1]);
+      if (id === Number(session.id)) return jsonResponse({ error: 'You cannot delete your currently signed-in account.' }, 400, origin);
+      const { data: admin, error: lookupError } = await supabase.from('admins').select('id,name,email').eq('id', id).maybeSingle();
+      if (lookupError) return jsonResponse({ error: lookupError.message }, 503, origin);
+      if (!admin) return jsonResponse({ error: 'Administrator not found.' }, 404, origin);
+      const { error } = await supabase.from('admins').delete().eq('id', id);
+      if (error) return jsonResponse({ error: `Unable to delete administrator: ${error.message}` }, 503, origin);
+      await recordAdminActivity(supabase, request, session, 'USER_DELETED', 'admin', `Deleted administrator ${admin.name} (${admin.email})`, id);
+      return jsonResponse({ message: 'Administrator deleted successfully.' }, 200, origin);
+    }
+
     return jsonResponse({ error: 'Route not mapped in worker stub; deploy Express/Node API or map route.' }, 404, origin);
   },
 
