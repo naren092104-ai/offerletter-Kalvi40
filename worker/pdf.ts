@@ -213,24 +213,24 @@ export async function buildOfferLetterPdfBuffer(
   }
 
   const closing = sanitizeText(template.closing || 'With regards,');
-  page.drawText(closing, { x: margin, y, size: 9.5, font: regular, color: ink });
-  y -= 14;
+  page.drawText(closing, { x: margin, y, size: 10.5, font: regular, color: ink });
+  y -= 16;
 
   if (signature) {
     try {
       const image = signature.mime === 'image/png' ? await pdf.embedPng(signature.bytes) : await pdf.embedJpg(signature.bytes);
-      const dimensions = image.scaleToFit(145, signature.heightPt);
+      const dimensions = image.scaleToFit(150, signature.heightPt);
       const imageBottom = y - dimensions.height;
       page.drawImage(image, { x: margin, y: imageBottom, width: dimensions.width, height: dimensions.height });
-      y = imageBottom - 10;
+      y = imageBottom - 8;
     } catch {
       y -= 8;
     }
   } else {
-    y -= 8;
+    y -= 10;
   }
 
-  page.drawText('Prem Kumar Gokuladasan', { x: margin, y, size: 9.5, font: bold, color: ink });
+  page.drawText('Prem Kumar Gokuladasan', { x: margin, y, size: 10.5, font: bold, color: ink });
   y -= 13;
   page.drawText(sanitizeText(template.signatory_title || 'Founder & Managing Trustee'), { x: margin, y, size: 9.5, font: regular, color: ink });
   y -= 13;

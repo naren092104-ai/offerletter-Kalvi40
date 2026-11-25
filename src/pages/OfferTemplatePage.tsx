@@ -83,11 +83,13 @@ export function OfferTemplatePage({ onNavigate }: OfferTemplatePageProps) {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'Cache-Control': 'no-store',
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
           body: JSON.stringify({
             template: draft,
             candidateId: typeof candId === 'number' ? candId : undefined,
+            signatureNonce: previewNonce,
           }),
           signal,
         });
@@ -111,7 +113,7 @@ export function OfferTemplatePage({ onNavigate }: OfferTemplatePageProps) {
         }
       }
     },
-    [toast]
+    [toast, previewNonce]
   );
 
   // Debounced live A4 PDF regeneration whenever any template field, sample candidate, or signature changes
