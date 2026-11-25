@@ -61,21 +61,21 @@ function drawFooter(page: PDFPage, width: number, template: OfferLetterTemplate,
   const left = sanitizeText(template.footer_left_url);
   const right = sanitizeText(template.footer_right_url);
   const separator = left && right ? ' | ' : '';
-  const totalWidth = (left ? font.widthOfTextAtSize(left, 8.5) : 0)
-    + (separator ? font.widthOfTextAtSize(separator, 8.5) : 0)
-    + (right ? font.widthOfTextAtSize(right, 8.5) : 0);
-  const margin = 43;
-  let cursorX = width - margin - totalWidth;
-  const footerY = 50;
+  const totalWidth = (left ? font.widthOfTextAtSize(left, 11) : 0)
+    + (separator ? font.widthOfTextAtSize(separator, 11) : 0)
+    + (right ? font.widthOfTextAtSize(right, 11) : 0);
+  const margin = 54;
+  let cursorX = 320.3;
+  const footerY = 25.8;
 
   if (logoImage) {
-    const logoSize = logoImage.scaleToFit(46, 46);
-    page.drawImage(logoImage, { x: margin - 2, y: 38, width: logoSize.width, height: logoSize.height });
+    const logoSize = logoImage.scaleToFit(59.5, 53);
+    page.drawImage(logoImage, { x: 54, y: 29, width: logoSize.width, height: logoSize.height });
   }
 
   if (left) {
-    page.drawText(left, { x: cursorX, y: footerY, size: 8.5, font, color: linkBlue });
-    const leftWidth = font.widthOfTextAtSize(left, 8.5);
+    page.drawText(left, { x: cursorX, y: footerY, size: 11, font, color: linkBlue });
+    const leftWidth = font.widthOfTextAtSize(left, 11);
     page.drawLine({ start: { x: cursorX, y: footerY - 1.2 }, end: { x: cursorX + leftWidth, y: footerY - 1.2 }, thickness: 0.5, color: linkBlue });
     cursorX += leftWidth;
   }
@@ -109,8 +109,8 @@ export async function buildOfferLetterPdfBuffer(
   const joiningDate = sanitizeText(formatDateDDMMYYYY(String(candidate.joining_date ?? '')));
   const width = 595.28;
   const height = 841.89;
-  const margin = 43;
-  const contentWidth = width - margin * 2;
+  const margin = 54;
+  const contentWidth = 493;
   const title = sanitizeText(template.heading || 'ENGAGEMENT LETTER');
   const bodyParagraphs = fillTemplate(
     typeof candidate.custom_offer_body === 'string' && candidate.custom_offer_body.trim() ? candidate.custom_offer_body : template.body,
@@ -133,60 +133,51 @@ export async function buildOfferLetterPdfBuffer(
   }
 
   const drawHeader = (target: PDFPage) => {
-    target.drawText(sanitizeText(template.header_name), { x: margin, y: 785, size: 9, font: bold, color: ink });
-    target.drawText(sanitizeText(template.header_role), { x: margin, y: 771, size: 10, font: italic, color: ink });
-    target.drawText('Mobile', { x: 368, y: 787, size: 9, font: regular, color: ink });
-    target.drawText(`: ${sanitizeText(template.trust_mobile)}`, { x: 410, y: 787, size: 9, font: regular, color: ink });
-    target.drawText('E-mail', { x: 368, y: 775, size: 9, font: regular, color: ink });
-    target.drawText(`: ${sanitizeText(template.trust_email)}`, { x: 410, y: 775, size: 9, font: regular, color: ink });
-    target.drawText('Web-site', { x: 368, y: 763, size: 9, font: regular, color: ink });
-    target.drawText(`: ${sanitizeText(template.trust_website)}`, { x: 410, y: 763, size: 9, font: regular, color: ink });
+    target.drawText(sanitizeText(template.header_name), { x: 54, y: 785, size: 9.5, font: bold, color: ink });
+    target.drawText(sanitizeText(template.header_role), { x: 54, y: 771, size: 11, font: italic, color: ink });
+
+    target.drawText('Mobile', { x: 368, y: 787, size: 9.5, font: regular, color: ink });
+    target.drawText(`: ${sanitizeText(template.trust_mobile)}`, { x: 411, y: 787, size: 9.5, font: regular, color: ink });
+    target.drawText('E-mail', { x: 368, y: 775, size: 9.5, font: regular, color: ink });
+    target.drawText(`: ${sanitizeText(template.trust_email)}`, { x: 411, y: 775, size: 9.5, font: regular, color: ink });
+    target.drawText('Web-site', { x: 368, y: 763, size: 9.5, font: regular, color: ink });
+    target.drawText(`: ${sanitizeText(template.trust_website)}`, { x: 411, y: 763, size: 9.5, font: regular, color: ink });
 
     const brand = sanitizeText(template.brand_title || 'BumbleB');
-    target.drawText(brand, { x: (width - bold.widthOfTextAtSize(brand, 24)) / 2, y: 704, size: 24, font: bold, color: navy });
+    target.drawText(brand, { x: (width - bold.widthOfTextAtSize(brand, 25)) / 2, y: 704, size: 25, font: bold, color: navy });
     if (template.brand_subtitle) {
       const subtitle = sanitizeText(template.brand_subtitle);
-      target.drawText(subtitle, { x: (width - regular.widthOfTextAtSize(subtitle, 7.5)) / 2, y: 688, size: 7.5, font: regular, color: ink });
+      target.drawText(subtitle, { x: (width - regular.widthOfTextAtSize(subtitle, 8)) / 2, y: 689, size: 8, font: regular, color: ink });
     }
 
     const regn = sanitizeText(template.trust_regn);
-    if (regn) target.drawText(regn, { x: (width - regular.widthOfTextAtSize(regn, 8.5)) / 2, y: 674, size: 8.5, font: regular, color: ink });
+    if (regn) target.drawText(regn, { x: (width - regular.widthOfTextAtSize(regn, 9)) / 2, y: 673, size: 9, font: regular, color: ink });
+
     const address = sanitizeText(template.trust_address);
-    if (address) {
-      const addressLines = wrapText(address, bold, 8.5, contentWidth - 20);
-      let addressY = 660;
-      for (const addressLine of addressLines) {
-        target.drawText(addressLine, { x: (width - bold.widthOfTextAtSize(addressLine, 8.5)) / 2, y: addressY, size: 8.5, font: bold, color: navy });
-        addressY -= 10;
-      }
-    }
-    target.drawLine({ start: { x: margin, y: 647 }, end: { x: width - margin, y: 647 }, thickness: 0.65, color: blue });
+    if (address) target.drawText(address, { x: (width - bold.widthOfTextAtSize(address, 9)) / 2, y: 660, size: 9, font: bold, color: navy });
+    target.drawLine({ start: { x: 54, y: 647 }, end: { x: 541, y: 647 }, thickness: 0.65, color: blue });
   };
 
   drawHeader(page);
-  page.drawText(title, { x: (width - bold.widthOfTextAtSize(title, 15)) / 2, y: 624, size: 15, font: bold, color: ink });
-  const titleWidth = bold.widthOfTextAtSize(title, 15);
-  page.drawLine({ start: { x: (width - titleWidth) / 2, y: 621 }, end: { x: (width + titleWidth) / 2, y: 621 }, thickness: 0.8, color: ink });
-  page.drawText(joiningDate, { x: width - margin - bold.widthOfTextAtSize(joiningDate, 10.5), y: 602, size: 10.5, font: bold, color: ink });
+  page.drawText(title, { x: (width - bold.widthOfTextAtSize(title, 11)) / 2, y: 654.6, size: 11, font: bold, color: ink });
+  const titleWidth = bold.widthOfTextAtSize(title, 11);
+  page.drawLine({ start: { x: (width - titleWidth) / 2, y: 652.6 }, end: { x: (width + titleWidth) / 2, y: 652.6 }, thickness: 0.5, color: ink });
+  page.drawText(joiningDate, { x: 493.9, y: 633.1, size: 11, font: bold, color: ink });
 
-  y = 580;
-  page.drawText('Dear ', { x: margin, y, size: 11.5, font: regular, color: ink });
-  const dearWidth = regular.widthOfTextAtSize('Dear ', 11.5);
-  page.drawText(`${candidateName},`, { x: margin + dearWidth, y, size: 11.5, font: bold, color: ink });
-  y -= 14;
-  page.drawText(`${location}${district ? `, ${district}` : ''}`, { x: margin, y, size: 10.5, font: regular, color: ink });
-  y -= 14;
+  y = 610;
+  page.drawText('Dear ', { x: 54, y, size: 11, font: regular, color: ink });
+  const dearWidth = regular.widthOfTextAtSize('Dear ', 11);
+  page.drawText(`${candidateName},`, { x: 54 + dearWidth, y, size: 11, font: bold, color: ink });
+  y -= 13.5;
+  page.drawText(`${location}${district ? `, ${district}` : ''}`, { x: 54, y, size: 11, font: regular, color: ink });
+  y -= 13.5;
   const phone = sanitizeText(candidate.phone);
-  if (phone) page.drawText(`Phone: ${phone}`, { x: margin, y, size: 10.5, font: regular, color: ink });
-  y -= 14;
-  const emailLabel = 'Email ID: ';
-  page.drawText(emailLabel, { x: margin, y, size: 10.5, font: regular, color: ink });
-  page.drawText(email, { x: margin + regular.widthOfTextAtSize(emailLabel, 10.5), y, size: 10.5, font: regular, color: linkBlue });
-  y -= 28;
+  if (phone) page.drawText(`Mob: ${phone}/ Email ID: ${email}`, { x: 54, y, size: 11, font: regular, color: ink });
+  y -= 27;
   const greeting = sanitizeText(template.greeting);
   if (greeting) {
-    page.drawText(greeting, { x: margin, y, size: 10.5, font: bold, color: ink });
-    y -= 24;
+    page.drawText(greeting, { x: 54, y: 542.6, size: 11, font: bold, color: ink });
+    y = 512;
   }
   for (let paragraphIndex = 0; paragraphIndex < bodyParagraphs.length; paragraphIndex++) {
     const paragraph = bodyParagraphs[paragraphIndex];
@@ -213,28 +204,21 @@ export async function buildOfferLetterPdfBuffer(
   }
 
   const closing = sanitizeText(template.closing || 'With regards,');
-  page.drawText(closing, { x: margin, y, size: 10.5, font: regular, color: ink });
-  y -= 16;
+  page.drawText(closing, { x: 54, y: 203, size: 11, font: regular, color: ink });
 
   if (signature) {
     try {
       const image = signature.mime === 'image/png' ? await pdf.embedPng(signature.bytes) : await pdf.embedJpg(signature.bytes);
-      const dimensions = image.scaleToFit(150, signature.heightPt);
-      const imageBottom = y - dimensions.height;
-      page.drawImage(image, { x: margin, y: imageBottom, width: dimensions.width, height: dimensions.height });
-      y = imageBottom - 8;
+      const dimensions = image.scaleToFit(80.5, 28.5);
+      page.drawImage(image, { x: 54, y: 160.5, width: dimensions.width, height: dimensions.height });
     } catch {
-      y -= 8;
+      // Invalid signature data must not prevent PDF generation.
     }
-  } else {
-    y -= 10;
   }
 
-  page.drawText('Prem Kumar Gokuladasan', { x: margin, y, size: 10.5, font: bold, color: ink });
-  y -= 13;
-  page.drawText(sanitizeText(template.signatory_title || 'Founder & Managing Trustee'), { x: margin, y, size: 9.5, font: regular, color: ink });
-  y -= 13;
-  page.drawText(sanitizeText(template.signatory_org || 'BumbleB Trust, Chennai'), { x: margin, y, size: 9.5, font: regular, color: ink });
+  page.drawText('Prem Kumar Gokuladasan', { x: 54, y: 145, size: 11, font: bold, color: ink });
+  page.drawText(sanitizeText(template.signatory_title || 'Founder & Managing Trustee'), { x: 54, y: 130, size: 11, font: regular, color: ink });
+  page.drawText(sanitizeText(template.signatory_org || 'BumbleB Trust, Chennai'), { x: 54, y: 116, size: 11, font: regular, color: ink });
   drawFooter(page, width, template, regular, logoImage);
   pdf.setTitle(`Engagement Letter - ${candidateName}`);
   pdf.setAuthor('BumbleB Trust - Kalvi40');
@@ -353,3 +337,6 @@ function drawRichJustifiedLines(page: PDFPage, lines: Array<Array<{word: string;
   }
   return y;
 }
+
+const sheetMargin = 54;
+const sheetBodyWidth = 493;
