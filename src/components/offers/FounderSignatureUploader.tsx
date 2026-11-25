@@ -63,11 +63,11 @@ async function processSignatureImage(
       const maxChannel = Math.max(r, g, b);
       const saturation = maxChannel - minChannel;
 
-      if (luminance > 235 && saturation < 28) {
+      if (luminance > 228 && saturation < 38) {
         data[i + 3] = 0;
-      } else if (luminance > 205 && saturation < 36) {
+      } else if (luminance > 196 && saturation < 48) {
         // Smooth edge feathering so strokes remain crisp and anti-aliased
-        const factor = Math.max(0, Math.min(1, (235 - luminance) / 30));
+        const factor = Math.max(0, Math.min(1, (228 - luminance) / 32));
         data[i + 3] = Math.round(a * factor);
       }
     }

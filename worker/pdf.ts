@@ -205,38 +205,36 @@ export async function buildOfferLetterPdfBuffer(
   const lines = wrapText(paragraphs, regular, bodySize, contentWidth);
   ({ page, y } = drawParagraphLines(page, lines, y));
   y -= 10;
-  for (const text of [template.closing, template.signatory_title, template.signatory_org]) {
-    const line = sanitizeText(text);
-    if (!line) continue;
-    if (y < 110) {
-      drawFooter(page, width, template, regular, logoImage);
-      page = pdf.addPage([width, height]);
-      drawHeader(page);
-      y = 650;
-    }
-    page.drawText(line, { x: margin, y, size: 10, font: line === template.signatory_title ? bold : regular, color: ink });
-    y -= 15;
-    if (text === template.closing && signature) {
-      try {
-        const image = signature.mime === 'image/png' ? await pdf.embedPng(signature.bytes) : await pdf.embedJpg(signature.bytes);
-        const dimensions = image.scaleToFit(190, signature.heightPt);
-        if (y < 110) {
-          drawFooter(page, width, template, regular, logoImage);
-          page = pdf.addPage([width, height]);
-          drawHeader(page);
-          y = 650;
-        }
-        page.drawImage(image, { x: margin, y: y - dimensions.height + 2, width: dimensions.width, height: dimensions.height });
-        y -= dimensions.height + 4;
-      } catch {
-        // An invalid or unsupported signature should not prevent PDF generation.
-      }
-    }
-    if (text === template.closing) {
-      page.drawText('Prem Kumar Gokuladasan', { x: margin, y: y - 8, size: 9.5, font: bold, color: ink });
-      y -= 13;
-    }
+  if (y < 110) {
+    drawFooter(page, width, template, regular, logoImage);
+    page = pdf.addPage([width, height]);
+    drawHeader(page);
+    y = 650;
   }
+
+  const closing = sanitizeText(template.closing || 'With regards,');
+  page.drawText(closing, { x: margin, y, size: 9.5, font: regular, color: ink });
+  y -= 14;
+
+  if (signature) {
+    try {
+      const image = signature.mime === 'image/png' ? await pdf.embedPng(signature.bytes) : await pdf.embedJpg(signature.bytes);
+      const dimensions = image.scaleToFit(145, signature.heightPt);
+      const imageBottom = y - dimensions.height;
+      page.drawImage(image, { x: margin, y: imageBottom, width: dimensions.width, height: dimensions.height });
+      y = imageBottom - 10;
+    } catch {
+      y -= 8;
+    }
+  } else {
+    y -= 8;
+  }
+
+  page.drawText('Prem Kumar Gokuladasan', { x: margin, y, size: 9.5, font: bold, color: ink });
+  y -= 13;
+  page.drawText(sanitizeText(template.signatory_title || 'Founder & Managing Trustee'), { x: margin, y, size: 9.5, font: regular, color: ink });
+  y -= 13;
+  page.drawText(sanitizeText(template.signatory_org || 'BumbleB Trust, Chennai'), { x: margin, y, size: 9.5, font: regular, color: ink });
   drawFooter(page, width, template, regular, logoImage);
   pdf.setTitle(`Engagement Letter - ${candidateName}`);
   pdf.setAuthor('BumbleB Trust - Kalvi40');
