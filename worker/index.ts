@@ -128,7 +128,8 @@ async function generateAndStorePdf(
       };
     }
   }
-  const { bytes, filename } = await buildOfferLetterPdfBuffer(candidate, template, signature);
+  const logo = await loadPdfLogo(env);
+  const { bytes, filename } = await buildOfferLetterPdfBuffer({ ...candidate, custom_offer_body: null }, template, null, logo);
   const { error: storageError } = await supabase.storage.from(env.SUPABASE_STORAGE_BUCKET || 'offer-letters')
     .upload(filename, bytes, { contentType: 'application/pdf', upsert: true });
   if (storageError) throw new Error(`Unable to save offer letter PDF to Supabase Storage: ${storageError.message}`);
@@ -757,6 +758,17 @@ async function verifyJwt(token: string, secret: string): Promise<Record<string, 
     const payload = JSON.parse(atob(payloadB64.replace(/-/g, '+').replace(/_/g, '/')));
     if (payload.exp && Date.now() / 1000 > payload.exp) return null;
     return payload;
+  } catch {
+    return null;
+  }
+}
+
+async function loadPdfLogo(env: Env): Promise<Uint8Array | null> {
+  try {
+    const baseUrl = (env.APP_URL || 'https://offerletter-kalvi40.pages.dev').replace(/\/$/, '');
+    const response = await fetch(`${baseUrl}/assets/aistudio/unnamed_4b5dc694.png`);
+    if (!response.ok) return null;
+    return new Uint8Array(await response.arrayBuffer());
   } catch {
     return null;
   }
@@ -2134,7 +2146,7 @@ export default {
         const baseTemplate = offerTemplateFromSettings(await loadSettings(supabase));
         const draft = body.template && typeof body.template === 'object' ? body.template as Record<string, unknown> : {};
         const template = { ...baseTemplate, ...draft } as typeof DEFAULT_OFFER_LETTER_TEMPLATE;
-        const { bytes, filename } = await buildOfferLetterPdfBuffer({ ...candidate, custom_offer_body: null }, template);
+        const { bytes, filename } = await buildOfferLetterPdfBuffer({ ...candidate, custom_offer_body: null }, template, null, await loadPdfLogo(env));
         return pdfResponse(bytes, filename, 'inline', origin);
       } catch (error) {
         return jsonResponse({ error: error instanceof Error ? error.message : 'Unable to create offer preview.' }, 503, origin);
@@ -2415,6 +2427,7 @@ export default {
         created_at: timestamp, updated_at: timestamp,
       }).select('id,name,email,role,designation,phone,last_login_at,created_at,updated_at').single();
       if (error) return jsonResponse({ error: `Unable to create administrator: ${error.message}` }, 503, origin);
+
       await recordAdminActivity(supabase, request, session, 'USER_CREATED', 'admin', `Created administrator ${name} (${email})`, data.id);
       return jsonResponse({ item: data, message: 'Administrator created successfully.' }, 201, origin);
     }

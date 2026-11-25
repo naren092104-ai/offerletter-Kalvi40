@@ -1,4 +1,4 @@
-import fs from 'node:fs';
+﻿import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
@@ -376,7 +376,6 @@ export async function buildOfferLetterPdfBuffer(
   const headerName = sanitizeForPdfWinAnsi(offerTemplate.header_name.trim());
   const headerRole = sanitizeForPdfWinAnsi(offerTemplate.header_role.trim());
   const brandTitle = sanitizeForPdfWinAnsi(offerTemplate.brand_title.trim() || 'BumbleB');
-  const subTitle = sanitizeForPdfWinAnsi(offerTemplate.brand_subtitle.trim());
   const trustAddress = sanitizeForPdfWinAnsi(offerTemplate.trust_address.trim());
   const trustRegn = sanitizeForPdfWinAnsi(offerTemplate.trust_regn.trim());
   const trustMobile = sanitizeForPdfWinAnsi(offerTemplate.trust_mobile.trim());
@@ -454,23 +453,15 @@ export async function buildOfferLetterPdfBuffer(
     page.drawText(`: ${trustWebsite}`, { x: rightColX + 42, y: 763, size: 9, font: regularFont, color: DARK_INK });
   }
 
-  const brandWidth = boldFont.widthOfTextAtSize(brandTitle, 22);
-  page.drawText(brandTitle, {
-    x: (width - brandWidth) / 2,
-    y: 744,
-    size: 22,
-    font: boldFont,
-    color: NAVY_INK,
-  });
-
-  if (subTitle) {
-    const subWidth = boldFont.widthOfTextAtSize(subTitle, 8);
-    page.drawText(subTitle, {
-      x: (width - subWidth) / 2,
-      y: 730,
-      size: 8,
-      font: boldFont,
-      color: NAVY_INK,
+  const logoPath = path.resolve(process.cwd(), 'public/assets/aistudio/unnamed_4b5dc694.png');
+  if (fs.existsSync(logoPath)) {
+    const logoImage = await pdfDoc.embedPng(fs.readFileSync(logoPath));
+    const logoSize = logoImage.scaleToFit(92, 92);
+    page.drawImage(logoImage, {
+      x: (width - logoSize.width) / 2,
+      y: 675,
+      width: logoSize.width,
+      height: logoSize.height,
     });
   }
 
@@ -496,12 +487,6 @@ export async function buildOfferLetterPdfBuffer(
     });
   }
 
-  page.drawLine({
-    start: { x: 60, y: 684 },
-    end: { x: width - 60, y: 684 },
-    thickness: 1.0,
-    color: LINE_BLUE,
-  });
 
   // =========================================================================
   // HEADING & DATE

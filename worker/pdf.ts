@@ -57,7 +57,7 @@ function wrapText(text: string, font: Awaited<ReturnType<PDFDocument['embedFont'
   return lines;
 }
 
-function drawFooter(page: PDFPage, width: number, template: OfferLetterTemplate, font: Awaited<ReturnType<PDFDocument['embedFont']>>): void {
+function drawFooter(page: PDFPage, width: number, template: OfferLetterTemplate, font: Awaited<ReturnType<PDFDocument['embedFont']>>, logoImage: Awaited<ReturnType<PDFDocument['embedPng']>> | null): void {
   const left = sanitizeText(template.footer_left_url);
   const right = sanitizeText(template.footer_right_url);
   const separator = left && right ? ' | ' : '';
@@ -66,19 +66,9 @@ function drawFooter(page: PDFPage, width: number, template: OfferLetterTemplate,
     + (right ? font.widthOfTextAtSize(right, 10) : 0);
   let cursorX = width - 64 - totalWidth;
   const footerY = 58;
-  page.drawLine({ start: { x: 64, y: 98 }, end: { x: width - 64, y: 98 }, thickness: 0.5, color: blue });
-  if (left) {
-    page.drawText(left, { x: cursorX, y: footerY, size: 10, font, color: linkBlue });
-    const leftWidth = font.widthOfTextAtSize(left, 10);
-    page.drawLine({ start: { x: cursorX, y: footerY - 1.5 }, end: { x: cursorX + leftWidth, y: footerY - 1.5 }, thickness: 0.6, color: linkBlue });
-    cursorX += leftWidth;
-  }
-  if (separator) {
-    page.drawText(separator, { x: cursorX, y: footerY, size: 10, font, color: ink });
-    cursorX += font.widthOfTextAtSize(separator, 10);
-  }
-  if (right) {
-    page.drawText(right, { x: cursorX, y: footerY, size: 10, font, color: linkBlue });
+  if (logoImage) {
+    const logoSize = logoImage.scaleToFit(56, 56);
+    page.drawImage(logoImage, { x: 62, y: 44, width: logoSize.width, height: logoSize.height });
   }
 }
 
@@ -131,15 +121,10 @@ export async function buildOfferLetterPdfBuffer(
     target.drawText(`: ${sanitizeText(template.trust_email)}`, { x: 410, y: 775, size: 9, font: regular, color: ink });
     target.drawText('Web-site', { x: 368, y: 763, size: 9, font: regular, color: ink });
     target.drawText(`: ${sanitizeText(template.trust_website)}`, { x: 410, y: 763, size: 9, font: regular, color: ink });
-    const brand = sanitizeText(template.brand_title || 'BumbleB');
-    target.drawText(brand, { x: (width - bold.widthOfTextAtSize(brand, 22)) / 2, y: 744, size: 22, font: bold, color: navy });
-    const subtitle = sanitizeText(template.brand_subtitle);
-    if (subtitle && !logoImage) target.drawText(subtitle, { x: (width - bold.widthOfTextAtSize(subtitle, 8)) / 2, y: 730, size: 8, font: bold, color: navy });
     const regn = sanitizeText(template.trust_regn);
     if (regn) target.drawText(regn, { x: (width - regular.widthOfTextAtSize(regn, 9)) / 2, y: 707, size: 9, font: regular, color: ink });
     const address = sanitizeText(template.trust_address);
     if (address) target.drawText(address.slice(0, 110), { x: (width - regular.widthOfTextAtSize(address.slice(0, 110), 9)) / 2, y: 693, size: 9, font: regular, color: navy });
-    target.drawLine({ start: { x: 60, y: 684 }, end: { x: width - 60, y: 684 }, thickness: 1, color: blue });
     if (logoImage) {
       const logoSize = logoImage.scaleToFit(92, 92);
       target.drawImage(logoImage, {
@@ -148,9 +133,6 @@ export async function buildOfferLetterPdfBuffer(
         width: logoSize.width,
         height: logoSize.height,
       });
-    } else {
-      const brand = sanitizeText(template.brand_title || 'BumbleB');
-      target.drawText(brand, { x: (width - bold.widthOfTextAtSize(brand, 22)) / 2, y: 744, size: 22, font: bold, color: navy });
     }
   };
   drawHeader(page);
@@ -182,7 +164,7 @@ export async function buildOfferLetterPdfBuffer(
     let cursor = startY;
     for (const line of lines) {
       if (cursor < 105) {
-        drawFooter(target, width, template, regular);
+        drawFooter(target, width, template, regular, logoImage);
         target = pdf.addPage([width, height]);
         drawHeader(target);
         cursor = 650;
@@ -199,7 +181,7 @@ export async function buildOfferLetterPdfBuffer(
     const line = sanitizeText(text);
     if (!line) continue;
     if (y < 110) {
-      drawFooter(page, width, template, regular);
+      drawFooter(page, width, template, regular, logoImage);
       page = pdf.addPage([width, height]);
       drawHeader(page);
       y = 650;
@@ -211,7 +193,7 @@ export async function buildOfferLetterPdfBuffer(
         const image = signature.mime === 'image/png' ? await pdf.embedPng(signature.bytes) : await pdf.embedJpg(signature.bytes);
         const dimensions = image.scaleToFit(190, signature.heightPt);
         if (y < 110) {
-          drawFooter(page, width, template, regular);
+          drawFooter(page, width, template, regular, logoImage);
           page = pdf.addPage([width, height]);
           drawHeader(page);
           y = 650;
@@ -223,7 +205,7 @@ export async function buildOfferLetterPdfBuffer(
       }
     }
   }
-  drawFooter(page, width, template, regular);
+  drawFooter(page, width, template, regular, logoImage);
   pdf.setTitle(`Engagement Letter - ${candidateName}`);
   pdf.setAuthor('BumbleB Trust - Kalvi40');
   pdf.setSubject(`Teaching Coordinator Engagement Letter | ${school} | ${district}`);
