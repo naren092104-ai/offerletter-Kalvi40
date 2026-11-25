@@ -3,14 +3,16 @@ const TOKEN_KEY = 'kalvi40_admin_token';
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 
 export function getAuthToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
+  return sessionStorage.getItem(TOKEN_KEY) || localStorage.getItem(TOKEN_KEY);
 }
 
-export function setAuthToken(token: string | null): void {
+export function setAuthToken(token: string | null, rememberMe = false): void {
+  sessionStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(TOKEN_KEY);
+
   if (token) {
-    localStorage.setItem(TOKEN_KEY, token);
-  } else {
-    localStorage.removeItem(TOKEN_KEY);
+    const storage = rememberMe ? localStorage : sessionStorage;
+    storage.setItem(TOKEN_KEY, token);
   }
 }
 

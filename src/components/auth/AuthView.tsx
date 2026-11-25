@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Lock, Mail, ArrowLeft, CheckCircle2, AlertCircle, ShieldCheck } from 'lucide-react';
+import { Lock, Mail, ArrowLeft, CheckCircle2, AlertCircle, ShieldCheck, Eye, EyeOff } from 'lucide-react';
 import { apiRequest, setAuthToken } from '../../lib/api';
 import type { AdminUser } from '../../types/kalvi40';
 
@@ -9,14 +9,17 @@ interface AuthViewProps {
 }
 
 export function AuthView({ initialResetToken = '', onAuthenticated }: AuthViewProps) {
+  const rememberedEmail = localStorage.getItem('adminEmail') || '';
   const [mode, setMode] = useState<'login' | 'forgot' | 'reset'>(initialResetToken ? 'reset' : 'login');
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(rememberedEmail);
   const [password, setPassword] = useState('');
   const [resetToken, setResetToken] = useState(initialResetToken);
   const [newPassword, setNewPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [rememberMe, setRememberMe] = useState(Boolean(rememberedEmail));
+  const [passwordVisible, setPasswordVisible] = useState(false);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -27,8 +30,15 @@ export function AuthView({ initialResetToken = '', onAuthenticated }: AuthViewPr
         method: 'POST',
         body: JSON.stringify({ email, password }),
       });
-      setAuthToken(res.token);
+      setAuthToken(res.token, rememberMe);
       onAuthenticated(res.admin);
+      if (rememberMe) {
+        localStorage.setItem('adminEmail', email);
+        localStorage.removeItem('adminPassword');
+      } else {
+        localStorage.removeItem('adminEmail');
+        localStorage.removeItem('adminPassword');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to sign in.');
     } finally {
@@ -170,14 +180,34 @@ export function AuthView({ initialResetToken = '', onAuthenticated }: AuthViewPr
                   <div className="relative">
                     <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                     <input
-                      type="password"
+                      type={passwordVisible ? 'text' : 'password'}
                       required
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       className="w-full pl-9 pr-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent"
                       placeholder="Enter your password"
                     />
+                    <button
+                      type="button"
+                      onClick={() => setPasswordVisible((prev) => !prev)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+                    >
+                      {passwordVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
                   </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="rememberMe"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    className="w-4 h-4 text-[#2563EB] rounded focus:ring-2 focus:ring-[#2563EB] focus:ring-opacity-50"
+                  />
+                  <label htmlFor="rememberMe" className="text-sm text-slate-500 cursor-pointer">
+                    Remember me
+                  </label>
                 </div>
 
                 <button
