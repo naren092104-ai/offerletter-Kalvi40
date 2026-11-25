@@ -66,6 +66,7 @@ function drawFooter(page: PDFPage, width: number, template: OfferLetterTemplate,
     + (right ? font.widthOfTextAtSize(right, 10) : 0);
   let cursorX = width - 64 - totalWidth;
   const footerY = 58;
+  page.drawLine({ start: { x: 64, y: 98 }, end: { x: width - 64, y: 98 }, thickness: 0.5, color: blue });
   if (left) {
     page.drawText(left, { x: cursorX, y: footerY, size: 10, font, color: linkBlue });
     const leftWidth = font.widthOfTextAtSize(left, 10);
@@ -76,7 +77,9 @@ function drawFooter(page: PDFPage, width: number, template: OfferLetterTemplate,
     page.drawText(separator, { x: cursorX, y: footerY, size: 10, font, color: ink });
     cursorX += font.widthOfTextAtSize(separator, 10);
   }
-  if (right) page.drawText(right, { x: cursorX, y: footerY, size: 10, font, color: linkBlue });
+  if (right) {
+    page.drawText(right, { x: cursorX, y: footerY, size: 10, font, color: linkBlue });
+  }
 }
 
 export async function buildOfferLetterPdfBuffer(
@@ -122,9 +125,12 @@ export async function buildOfferLetterPdfBuffer(
   const drawHeader = (target: PDFPage) => {
     target.drawText(sanitizeText(template.header_name), { x: margin, y: 785, size: 9, font: bold, color: ink });
     target.drawText(sanitizeText(template.header_role), { x: margin, y: 771, size: 10, font: italic, color: ink });
-    target.drawText(sanitizeText(template.trust_mobile), { x: 368, y: 785, size: 8, font: regular, color: ink });
-    target.drawText(sanitizeText(template.trust_email), { x: 368, y: 773, size: 8, font: regular, color: ink });
-    target.drawText(sanitizeText(template.trust_website), { x: 368, y: 761, size: 8, font: regular, color: ink });
+    target.drawText('Mobile', { x: 368, y: 787, size: 9, font: regular, color: ink });
+    target.drawText(`: ${sanitizeText(template.trust_mobile)}`, { x: 410, y: 787, size: 9, font: regular, color: ink });
+    target.drawText('E-mail', { x: 368, y: 775, size: 9, font: regular, color: ink });
+    target.drawText(`: ${sanitizeText(template.trust_email)}`, { x: 410, y: 775, size: 9, font: regular, color: ink });
+    target.drawText('Web-site', { x: 368, y: 763, size: 9, font: regular, color: ink });
+    target.drawText(`: ${sanitizeText(template.trust_website)}`, { x: 410, y: 763, size: 9, font: regular, color: ink });
     const brand = sanitizeText(template.brand_title || 'BumbleB');
     target.drawText(brand, { x: (width - bold.widthOfTextAtSize(brand, 22)) / 2, y: 744, size: 22, font: bold, color: navy });
     const subtitle = sanitizeText(template.brand_subtitle);
@@ -165,7 +171,7 @@ export async function buildOfferLetterPdfBuffer(
   const emailLabel = 'Email ID: ';
   page.drawText(emailLabel, { x: margin, y, size: 10.5, font: regular, color: ink });
   page.drawText(email, { x: margin + regular.widthOfTextAtSize(emailLabel, 10.5), y, size: 10.5, font: regular, color: linkBlue });
-  page.drawText(joiningDate, { x: width - margin - bold.widthOfTextAtSize(joiningDate, 10.5), y: 641, size: 10.5, font: bold, color: ink });
+  page.drawText(joiningDate, { x: width - margin - bold.widthOfTextAtSize(joiningDate, 10.5), y: 628, size: 10.5, font: bold, color: ink });
   y -= 30;
   const greeting = sanitizeText(template.greeting);
   if (greeting) {
