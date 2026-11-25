@@ -129,7 +129,12 @@ async function generateAndStorePdf(
     }
   }
   const logo = await loadPdfLogo(env);
-  const { bytes, filename } = await buildOfferLetterPdfBuffer({ ...candidate, custom_offer_body: null }, template, null, logo);
+  const { bytes, filename } = await buildOfferLetterPdfBuffer(
+          { ...candidate, custom_offer_body: null },
+          template,
+          await loadPdfSignature(supabase, env),
+          await loadPdfLogo(env),
+        );
   const { error: storageError } = await supabase.storage.from(env.SUPABASE_STORAGE_BUCKET || 'offer-letters')
     .upload(filename, bytes, { contentType: 'application/pdf', upsert: true });
   if (storageError) throw new Error(`Unable to save offer letter PDF to Supabase Storage: ${storageError.message}`);
@@ -774,6 +779,27 @@ async function loadPdfLogo(env: Env): Promise<Uint8Array | null> {
   }
 }
 
+async function loadPdfSignature(
+  supabase: ReturnType<typeof createPrivilegedSupabaseClient>,
+  env: Env,
+): Promise<{ bytes: Uint8Array; mime: string; heightPt: number } | null> {
+  const settings = await loadSettings(supabase);
+  const filename = settings.get('founder_signature_filename')?.trim();
+  if (!filename || filename.includes('/') || filename.includes('\\') || filename.includes('..')) return null;
+
+  const { data, error } = await supabase.storage
+    .from(env.SUPABASE_STORAGE_BUCKET || 'offer-letters')
+    .download(filename);
+  if (error || !data) return null;
+
+  const height = Number(settings.get('founder_signature_height') || 40);
+  return {
+    bytes: new Uint8Array(await data.arrayBuffer()),
+    mime: settings.get('founder_signature_mime') || 'image/png',
+    heightPt: Number.isFinite(height) ? Math.max(24, Math.min(72, Math.round(height))) : 40,
+  };
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const requestOrigin = request.headers.get('Origin') || undefined;
@@ -1312,45 +1338,11 @@ export default {
       if (error) return jsonResponse({ error: `Unable to delete candidate from Supabase: ${error.message}` }, 503, origin);
       await deleteCandidateFiles(supabase, env, [candidate]);
       try {
-        await recordAdminActivity(supabase, request, session, 'CANDIDATE_DELETED', 'candidate',
-          `Deleted candidate ${candidate.candidate_name} (${candidate.email})`, candidateId);
+        await recordAdminActivity(supabase, request, session, 'CANDIDATE_DELETED', 'candidate', `Deleted candidate ${candidate.candidate_name}.`, candidateId);
       } catch (activityError) {
-        return jsonResponse({ error: activityError instanceof Error ? activityError.message : 'Unable to write activity log.' }, 503, origin);
+        console.warn('Unable to record candidate delete activity:', activityError);
       }
       return jsonResponse({ message: 'Candidate deleted.' }, 200, origin);
-    }
-
-    const candidateContentMatch = url.pathname.match(/^\/api\/candidates\/(\d+)\/offer-content$/);
-    if (candidateContentMatch && request.method === 'PUT') {
-      const candidateId = Number(candidateContentMatch[1]);
-      const candidate = await getCandidate(supabase, candidateId);
-      if (!candidate) return jsonResponse({ error: 'Candidate not found.' }, 404, origin);
-      let body: { custom_offer_body?: unknown };
-      try {
-        body = await request.json() as { custom_offer_body?: unknown };
-      } catch {
-        return jsonResponse({ error: 'Request body must be valid JSON.' }, 400, origin);
-      }
-      const customOfferBody = typeof body.custom_offer_body === 'string' ? body.custom_offer_body.trim() || null : null;
-      const { error } = await supabase.from('candidates').update({
-        custom_offer_body: customOfferBody,
-        offer_generated: false,
-        verification_status: 'unverified',
-        verification_issues: null,
-        updated_at: now(),
-      }).eq('id', candidateId);
-      if (error) return jsonResponse({ error: error.message }, 503, origin);
-      try {
-        const updatedCandidate = await getCandidate(supabase, candidateId);
-        if (!updatedCandidate) return jsonResponse({ error: 'Candidate not found.' }, 404, origin);
-        const pdf = await generateAndStorePdf(supabase, env, updatedCandidate);
-        const refreshed = await getCandidate(supabase, candidateId);
-        await recordAdminActivity(supabase, request, session, 'CANDIDATE_OFFER_CONTENT_UPDATED', 'candidate',
-          `Saved offer content and regenerated ${pdf.filename} for ${candidate.candidate_name}.`, candidateId);
-        return jsonResponse({ candidate: refreshed, filename: pdf.filename }, 200, origin);
-      } catch (error) {
-        return jsonResponse({ error: error instanceof Error ? error.message : 'Unable to save candidate offer content.' }, 503, origin);
-      }
     }
 
     const generatePdfMatch = url.pathname.match(/^\/api\/candidates\/(\d+)\/generate-pdf$/);
@@ -1754,7 +1746,7 @@ export default {
             .eq('candidate_id', candidate.id).in('status', ['sent', 'pending', 'processing']).limit(1).maybeSingle();
           if (error) return jsonResponse({ error: error.message }, 503, origin);
           if (already) {
-            blocked.push({ id: Number(candidate.id), name: String(candidate.candidate_name), email: String(candidate.email), reason: `Already sent or queued in ${already.batch_code} (duplicate prevented).` });
+            blocked.push({ id: Number(candidate.id), name: String(candidate.candidate_name), email: String(candidate.email), reason: `Already sent or queued in ${already.batch_code}.` });
             continue;
           }
         }
@@ -2146,7 +2138,12 @@ export default {
         const baseTemplate = offerTemplateFromSettings(await loadSettings(supabase));
         const draft = body.template && typeof body.template === 'object' ? body.template as Record<string, unknown> : {};
         const template = { ...baseTemplate, ...draft } as typeof DEFAULT_OFFER_LETTER_TEMPLATE;
-        const { bytes, filename } = await buildOfferLetterPdfBuffer({ ...candidate, custom_offer_body: null }, template, null, await loadPdfLogo(env));
+        const { bytes, filename } = await buildOfferLetterPdfBuffer(
+          { ...candidate, custom_offer_body: null },
+          template,
+          await loadPdfSignature(supabase, env),
+          await loadPdfLogo(env),
+        );
         return pdfResponse(bytes, filename, 'inline', origin);
       } catch (error) {
         return jsonResponse({ error: error instanceof Error ? error.message : 'Unable to create offer preview.' }, 503, origin);

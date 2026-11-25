@@ -419,8 +419,8 @@ export async function buildOfferLetterPdfBuffer(
   const boldFont = await pdfDoc.embedFont(StandardFonts.TimesRomanBold);
   const italicSerif = await pdfDoc.embedFont(StandardFonts.TimesRomanItalic);
 
-  const marginLeft = 64;
-  const marginRight = 64;
+  const marginLeft = 43;
+  const marginRight = 43;
   const contentWidth = width - marginLeft - marginRight;
 
   // =========================================================================
@@ -489,123 +489,79 @@ export async function buildOfferLetterPdfBuffer(
   // HEADING & DATE
   // =========================================================================
   const heading = sanitizeForPdfWinAnsi(offerTemplate.heading.trim() || 'ENGAGEMENT LETTER');
-  const headingWidth = boldFont.widthOfTextAtSize(heading, 11);
+  const headingWidth = boldFont.widthOfTextAtSize(heading, 15);
   const headingX = (width - headingWidth) / 2;
   page.drawText(heading, {
     x: headingX,
     y: 624,
-    size: 11,
+    size: 15,
     font: boldFont,
     color: DARK_INK,
   });
   page.drawLine({
-    start: { x: headingX, y: 622 },
-    end: { x: headingX + headingWidth, y: 622 },
+    start: { x: headingX, y: 621 },
+    end: { x: headingX + headingWidth, y: 621 },
     thickness: 0.8,
     color: DARK_INK,
   });
 
-  const dateWidth = boldFont.widthOfTextAtSize(formattedDate, 9.5);
+  const dateWidth = boldFont.widthOfTextAtSize(formattedDate, 10.5);
   page.drawText(formattedDate, {
     x: width - marginRight - dateWidth,
-    y: 606,
-    size: 9.5,
+    y: 602,
+    size: 10.5,
     font: boldFont,
     color: DARK_INK,
   });
 
-  // =========================================================================
-  // RECIPIENT DETAILS (Candidate-Specific Fields)
-  // =========================================================================
-  let cursorY = 586;
-  page.drawText('Dear ', {
-    x: marginLeft,
-    y: cursorY,
-    size: 9.5,
-    font: regularFont,
-    color: DARK_INK,
-  });
-  const dearW = regularFont.widthOfTextAtSize('Dear ', 9.5);
-  const candidateNameLines = wrapTextToWidth(`${safeCandidateName},`, contentWidth - dearW, boldFont, 9.5);
+  let cursorY = 580;
+  page.drawText('Dear ', { x: marginLeft, y: cursorY, size: 11.5, font: regularFont, color: DARK_INK });
+  const dearW = regularFont.widthOfTextAtSize('Dear ', 11.5);
+  const candidateNameLines = wrapTextToWidth(`${safeCandidateName},`, contentWidth - dearW, boldFont, 11.5);
   candidateNameLines.forEach((line, index) => {
-    page.drawText(line, {
-      x: index === 0 ? marginLeft + dearW : marginLeft,
-      y: cursorY - index * 12,
-      size: 9.5,
-      font: boldFont,
-      color: DARK_INK,
-    });
+    page.drawText(line, { x: index === 0 ? marginLeft + dearW : marginLeft, y: cursorY - index * 14, size: 11.5, font: boldFont, color: DARK_INK });
   });
+  cursorY -= candidateNameLines.length > 1 ? candidateNameLines.length * 14 : 14;
 
-  cursorY -= candidateNameLines.length > 1 ? candidateNameLines.length * 12 : 13;
   const locationDistrict = `${safeLocation}${safeDistrict ? `, ${safeDistrict}` : ''}`;
-  const locationLines = wrapTextToWidth(locationDistrict, contentWidth, regularFont, 9.5);
-  locationLines.forEach((line, index) => {
-    page.drawText(line, { x: marginLeft, y: cursorY - index * 12, size: 9.5, font: regularFont, color: DARK_INK });
-  });
+  const locationLines = wrapTextToWidth(locationDistrict, contentWidth, regularFont, 10.5);
+  locationLines.forEach((line, index) => page.drawText(line, { x: marginLeft, y: cursorY - index * 14, size: 10.5, font: regularFont, color: DARK_INK }));
+  cursorY -= locationLines.length * 14;
 
-  cursorY -= locationLines.length * 12;
-  if (safePhone) {
-    page.drawText(`Phone: ${safePhone}`, { x: marginLeft, y: cursorY, size: 9.5, font: regularFont, color: DARK_INK });
-    cursorY -= 12;
-  }
+  if (safePhone) { page.drawText(`Phone: ${safePhone}`, { x: marginLeft, y: cursorY, size: 10.5, font: regularFont, color: DARK_INK }); cursorY -= 14; }
   const emailLabel = 'Email ID: ';
-  page.drawText(emailLabel, { x: marginLeft, y: cursorY, size: 9.5, font: regularFont, color: DARK_INK });
-  const emailLabelW = regularFont.widthOfTextAtSize(emailLabel, 9.5);
-  page.drawText(safeEmail, { x: marginLeft + emailLabelW, y: cursorY, size: 9.5, font: regularFont, color: LINK_BLUE });
+  page.drawText(emailLabel, { x: marginLeft, y: cursorY, size: 10.5, font: regularFont, color: DARK_INK });
+  const emailLabelW = regularFont.widthOfTextAtSize(emailLabel, 10.5);
+  page.drawText(safeEmail, { x: marginLeft + emailLabelW, y: cursorY, size: 10.5, font: regularFont, color: LINK_BLUE });
 
-  // =========================================================================
-  // BODY CONTENT (Editable Master Template or Candidate-Specific Override)
-  // =========================================================================
   cursorY -= 28;
-  const greetingText = sanitizeForPdfWinAnsi(renderTemplateString(offerTemplate.greeting, candidate, {
-    contract_end_date: offerTemplate.contract_end_date,
-    stipend_text: offerTemplate.stipend_text,
-  }));
-  page.drawText(greetingText, { x: marginLeft, y: cursorY, size: 9.5, font: boldFont, color: DARK_INK });
+  const greetingText = sanitizeForPdfWinAnsi(renderTemplateString(offerTemplate.greeting, candidate, { contract_end_date: offerTemplate.contract_end_date, stipend_text: offerTemplate.stipend_text }));
+  page.drawText(greetingText, { x: marginLeft, y: cursorY, size: 10.5, font: boldFont, color: DARK_INK });
 
-  const activeBodyTemplate = candidate.custom_offer_body && candidate.custom_offer_body.trim()
-    ? candidate.custom_offer_body
-    : offerTemplate.body;
+  const fontSize = Math.max(10.5, Math.min(11, offerTemplate.body_font_size || 10.5));
+  const lineHeight = Number((fontSize * 1.42).toFixed(2));
+  const bottomLimitForText = 118;
+  cursorY -= 22;
+
+  const activeBodyTemplate = candidate.custom_offer_body && candidate.custom_offer_body.trim() ? candidate.custom_offer_body : offerTemplate.body;
   const renderedBodyRaw = renderTemplateString(activeBodyTemplate, candidate, {
     contract_end_date: offerTemplate.contract_end_date,
     stipend_text: offerTemplate.stipend_text,
   }).replace(/\r\n/g, '\n').replace(/\.\.(?!\.)/g, '.');
-  const paragraphs = renderedBodyRaw.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
-  const fontSize = offerTemplate.body_font_size || 9.5;
-  const lineHeight = Number((fontSize * 1.34).toFixed(2));
-  const bottomLimitForText = 118;
-  cursorY -= 22;
+  const paragraphs = renderedBodyRaw.split(/\n{2,}/).map((paragraph) => paragraph.trim()).filter(Boolean);
 
   for (let pIdx = 0; pIdx < paragraphs.length; pIdx++) {
     const subLines = paragraphs[pIdx].split('\n').map((s) => s.trim()).filter(Boolean);
     for (const subLine of subLines) {
-      const laidOut = layoutParagraphLines({
-        segments: parseBoldSegments(subLine),
-        maxWidth: contentWidth,
-        fontSize,
-        regularFont,
-        boldFont,
-      });
+      const laidOut = layoutParagraphLines({ segments: parseBoldSegments(subLine), maxWidth: contentWidth, fontSize, regularFont, boldFont });
       if (cursorY - laidOut.length * lineHeight < bottomLimitForText) {
         await drawFooter({ pdfDoc, page, width, marginLeft, marginRight, regularFont, footerLeftUrl, footerRightUrl });
         page = pdfDoc.addPage([595.28, 841.89]);
         cursorY = 785;
       }
-      cursorY = drawLaidOutLines({
-        page,
-        lines: laidOut,
-        x: marginLeft,
-        startY: cursorY,
-        maxWidth: contentWidth,
-        fontSize,
-        lineHeight,
-        regularFont,
-        boldFont,
-        justify: true,
-      });
+      cursorY = drawLaidOutLines({ page, lines: laidOut, x: marginLeft, startY: cursorY, maxWidth: contentWidth, fontSize, lineHeight, regularFont, boldFont, justify: true });
     }
-    if (pIdx < paragraphs.length - 1) cursorY -= 8;
+    if (pIdx < paragraphs.length - 1) cursorY -= 10;
   }
 
   // =========================================================================
@@ -642,9 +598,7 @@ export async function buildOfferLetterPdfBuffer(
   }
 
   cursorY -= 14;
-  page.drawText(sanitizeForPdfWinAnsi(offerTemplate.closing.trim() || 'With regards,'), {
-    x: marginLeft, y: cursorY, size: 9.5, font: regularFont, color: DARK_INK,
-  });
+  page.drawText(sanitizeForPdfWinAnsi(offerTemplate.closing.trim() || 'With regards,'), { x: marginLeft, y: cursorY, size: 10.5, font: regularFont, color: DARK_INK });
 
   let signTitleY = cursorY - 42;
   if (embeddedSigImg) {
@@ -653,14 +607,9 @@ export async function buildOfferLetterPdfBuffer(
     signTitleY = imgBottomY - 12;
   }
 
-  page.drawText('Prem Kumar Gokuladasan', { x: marginLeft, y: signTitleY, size: 9.5, font: boldFont, color: DARK_INK });
-  page.drawText(sanitizeForPdfWinAnsi(offerTemplate.signatory_title.trim() || 'Founder & Managing Trustee'), {
-    x: marginLeft, y: signTitleY - 13, size: 9.5, font: regularFont, color: DARK_INK,
-  });
-  page.drawText(sanitizeForPdfWinAnsi(offerTemplate.signatory_org.trim() || 'BumbleB Trust, Chennai'), {
-    x: marginLeft, y: signTitleY - 26, size: 9.5, font: regularFont, color: DARK_INK,
-  });
-
+  page.drawText('Prem Kumar Gokuladasan', { x: marginLeft, y: signTitleY, size: 10.5, font: boldFont, color: DARK_INK });
+  page.drawText(sanitizeForPdfWinAnsi(offerTemplate.signatory_title.trim() || 'Founder & Managing Trustee'), { x: marginLeft, y: signTitleY - 13, size: 10.5, font: regularFont, color: DARK_INK });
+  page.drawText(sanitizeForPdfWinAnsi(offerTemplate.signatory_org.trim() || 'BumbleB Trust, Chennai'), { x: marginLeft, y: signTitleY - 26, size: 10.5, font: regularFont, color: DARK_INK });
   await drawFooter({ pdfDoc, page, width, marginLeft, marginRight, regularFont, footerLeftUrl, footerRightUrl });
 
   const pdfBytes = await pdfDoc.save();
@@ -681,8 +630,14 @@ export async function generateOfferLetterPdf(candidate: Candidate): Promise<{ bu
       offer_filename: filename,
       updated_at: new Date().toISOString(),
     }).eq('id', candidate.id);
-    if (error) {
-      console.error('Error updating candidate record in Supabase:', error);
+    if (error) throw new Error(`PDF was created locally but Supabase metadata could not be updated: ${error.message}`);
+
+    const supabaseBucket = process.env.SUPABASE_STORAGE_BUCKET || 'offer-letters';
+    try {
+      const { error: storageError } = await supabase.storage.from(supabaseBucket).upload(filename, buffer, { contentType: 'application/pdf', upsert: true });
+      if (storageError) console.warn('Supabase Storage upload failed:', storageError.message);
+    } catch (err) {
+      console.warn('Supabase Storage upload failed:', err instanceof Error ? err.message : 'unknown error');
     }
   }
 
@@ -694,23 +649,16 @@ export function extractTextFromPdfBuffer(pdfBuffer: Buffer): string {
   const extractedChunks: string[] = [];
   const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
   let match: RegExpExecArray | null;
-
   while ((match = streamRegex.exec(raw)) !== null) {
     const streamData = Buffer.from(match[1], 'latin1');
     let textStream = '';
-    try {
-      textStream = zlib.inflateSync(streamData).toString('latin1');
-    } catch {
-      textStream = streamData.toString('latin1');
-    }
+    try { textStream = zlib.inflateSync(streamData).toString('latin1'); }
+    catch { textStream = streamData.toString('latin1'); }
 
     const literalRegex = /\(([^()\\]*(?:\\.[^()\\]*)*)\)/g;
     let litMatch: RegExpExecArray | null;
     while ((litMatch = literalRegex.exec(textStream)) !== null) {
-      const unescaped = litMatch[1]
-        .replace(/\\([()\\])/g, '$1')
-        .replace(/\\n/g, ' ')
-        .replace(/\\r/g, ' ');
+      const unescaped = litMatch[1].replace(/\\([()\\])/g, '$1').replace(/\\n/g, ' ').replace(/\\r/g, ' ');
       if (unescaped.trim()) extractedChunks.push(unescaped);
     }
 
@@ -724,6 +672,5 @@ export function extractTextFromPdfBuffer(pdfBuffer: Buffer): string {
       }
     }
   }
-
   return extractedChunks.join(' ').replace(/\s+/g, ' ').trim();
 }

@@ -64,7 +64,7 @@ function drawFooter(page: PDFPage, width: number, template: OfferLetterTemplate,
   const totalWidth = (left ? font.widthOfTextAtSize(left, 8.5) : 0)
     + (separator ? font.widthOfTextAtSize(separator, 8.5) : 0)
     + (right ? font.widthOfTextAtSize(right, 8.5) : 0);
-  const margin = 64;
+  const margin = 43;
   let cursorX = width - margin - totalWidth;
   const footerY = 50;
 
@@ -109,15 +109,17 @@ export async function buildOfferLetterPdfBuffer(
   const joiningDate = sanitizeText(formatDateDDMMYYYY(String(candidate.joining_date ?? '')));
   const width = 595.28;
   const height = 841.89;
-  const margin = 64;
+  const margin = 43;
   const contentWidth = width - margin * 2;
   const title = sanitizeText(template.heading || 'ENGAGEMENT LETTER');
-  const paragraphs = fillTemplate(
+  const bodyParagraphs = fillTemplate(
     typeof candidate.custom_offer_body === 'string' && candidate.custom_offer_body.trim() ? candidate.custom_offer_body : template.body,
     candidate,
     template,
-  ).replace(/\*\*/g, '');
-  const bodySize = Math.max(9, Math.min(12.5, Number(template.body_font_size) || 10.5));
+  ).replace(/\r\n/g, '\n').split(/\n{2,}/).map((paragraph) => paragraph.trim()).filter(Boolean);
+
+  const bodySize = Math.max(10.5, Math.min(11, Number(template.body_font_size) || 10.5));
+  const bodyLineHeight = bodySize * 1.42;
   let page = pdf.addPage([width, height]);
   let y = 785;
 
@@ -162,48 +164,46 @@ export async function buildOfferLetterPdfBuffer(
   };
 
   drawHeader(page);
-  page.drawText(title, { x: (width - bold.widthOfTextAtSize(title, 11)) / 2, y: 624, size: 11, font: bold, color: ink });
-  const titleWidth = bold.widthOfTextAtSize(title, 11);
-  page.drawLine({ start: { x: (width - titleWidth) / 2, y: 622 }, end: { x: (width + titleWidth) / 2, y: 622 }, thickness: 0.8, color: ink });
-  page.drawText(joiningDate, { x: width - margin - bold.widthOfTextAtSize(joiningDate, 9.5), y: 606, size: 9.5, font: bold, color: ink });
+  page.drawText(title, { x: (width - bold.widthOfTextAtSize(title, 15)) / 2, y: 624, size: 15, font: bold, color: ink });
+  const titleWidth = bold.widthOfTextAtSize(title, 15);
+  page.drawLine({ start: { x: (width - titleWidth) / 2, y: 621 }, end: { x: (width + titleWidth) / 2, y: 621 }, thickness: 0.8, color: ink });
+  page.drawText(joiningDate, { x: width - margin - bold.widthOfTextAtSize(joiningDate, 10.5), y: 602, size: 10.5, font: bold, color: ink });
 
-  y = 586;
-  page.drawText('Dear ', { x: margin, y, size: 9.5, font: regular, color: ink });
-  const dearWidth = regular.widthOfTextAtSize('Dear ', 9.5);
-  page.drawText(`${candidateName},`, { x: margin + dearWidth, y, size: 9.5, font: bold, color: ink });
-  y -= 13;
-  page.drawText(`${location}${district ? `, ${district}` : ''}`, { x: margin, y, size: 9.5, font: regular, color: ink });
-  y -= 12;
+  y = 580;
+  page.drawText('Dear ', { x: margin, y, size: 11.5, font: regular, color: ink });
+  const dearWidth = regular.widthOfTextAtSize('Dear ', 11.5);
+  page.drawText(`${candidateName},`, { x: margin + dearWidth, y, size: 11.5, font: bold, color: ink });
+  y -= 14;
+  page.drawText(`${location}${district ? `, ${district}` : ''}`, { x: margin, y, size: 10.5, font: regular, color: ink });
+  y -= 14;
   const phone = sanitizeText(candidate.phone);
-  if (phone) {
-    page.drawText(`Phone: ${phone}`, { x: margin, y, size: 9.5, font: regular, color: ink });
-  }
-  y -= 12;
+  if (phone) page.drawText(`Phone: ${phone}`, { x: margin, y, size: 10.5, font: regular, color: ink });
+  y -= 14;
   const emailLabel = 'Email ID: ';
-  page.drawText(emailLabel, { x: margin, y, size: 9.5, font: regular, color: ink });
-  page.drawText(email, { x: margin + regular.widthOfTextAtSize(emailLabel, 9.5), y, size: 9.5, font: regular, color: linkBlue });
+  page.drawText(emailLabel, { x: margin, y, size: 10.5, font: regular, color: ink });
+  page.drawText(email, { x: margin + regular.widthOfTextAtSize(emailLabel, 10.5), y, size: 10.5, font: regular, color: linkBlue });
   y -= 28;
   const greeting = sanitizeText(template.greeting);
   if (greeting) {
-    page.drawText(greeting, { x: margin, y, size: 9.5, font: bold, color: ink });
-    y -= 22;
+    page.drawText(greeting, { x: margin, y, size: 10.5, font: bold, color: ink });
+    y -= 24;
   }
-  const drawParagraphLines = (target: PDFPage, lines: string[], startY: number) => {
-    let cursor = startY;
-    for (const line of lines) {
-      if (cursor < 105) {
-        drawFooter(target, width, template, regular, logoImage);
-        target = pdf.addPage([width, height]);
-        drawHeader(target);
-        cursor = 650;
+  for (let paragraphIndex = 0; paragraphIndex < bodyParagraphs.length; paragraphIndex++) {
+    const paragraph = bodyParagraphs[paragraphIndex];
+    const richLines = wrapRichText(paragraph.replace(/\n/g, ' '), regular, bold, bodySize, contentWidth);
+
+    for (const richLineChunk of richLines) {
+      if (y - bodyLineHeight < 118) {
+        drawFooter(page, width, template, regular, logoImage);
+        page = pdf.addPage([width, height]);
+        drawHeader(page);
+        y = 650;
       }
-      if (line) target.drawText(line, { x: margin, y: cursor, size: bodySize, font: regular, color: ink });
-      cursor -= bodySize * 1.45;
+      y = drawRichJustifiedLines(page, [richLineChunk], margin, y, contentWidth, regular, bold, bodySize, bodyLineHeight);
     }
-    return { page: target, y: cursor };
-  };
-  const lines = wrapText(paragraphs, regular, bodySize, contentWidth);
-  ({ page, y } = drawParagraphLines(page, lines, y));
+
+    if (paragraphIndex < bodyParagraphs.length - 1) y -= 10;
+  }
   y -= 10;
   if (y < 110) {
     drawFooter(page, width, template, regular, logoImage);
@@ -279,4 +279,77 @@ export async function extractPdfText(bytes: Uint8Array): Promise<string> {
     }
   }
   return chunks.join(' ').replace(/\s+/g, ' ').trim();
+}
+
+interface PdfTextSegment { text: string; bold: boolean }
+
+function parsePdfTextSegments(text: string): PdfTextSegment[] {
+  const segments: PdfTextSegment[] = [];
+  const regex = /\*\*([^*]+)\*\*/g;
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > cursor) segments.push({ text: text.slice(cursor, match.index), bold: false });
+    segments.push({ text: match[1], bold: true });
+    cursor = match.index + match[0].length;
+  }
+  if (cursor < text.length) segments.push({ text: text.slice(cursor), bold: false });
+  return segments.length ? segments : [{ text, bold: false }];
+}
+
+function wrapRichText(text: string, regular: Awaited<ReturnType<PDFDocument['embedFont']>>, bold: Awaited<ReturnType<PDFDocument['embedFont']>>, size: number, maxWidth: number): Array<Array<{word: string; bold: boolean; trailing: boolean}>> {
+  const tokens: Array<{word: string; bold: boolean; trailing: boolean}> = [];
+  for (const segment of parsePdfTextSegments(text)) {
+    const parts = segment.text.split(/(\s+)/);
+    for (let i = 0; i < parts.length; i++) {
+      if (!parts[i] || /^\s+$/.test(parts[i])) continue;
+      const trailing = /^\s*$/.test(parts[i + 1] || '') || i < parts.length - 1;
+      tokens.push({ word: parts[i], bold: segment.bold, trailing });
+    }
+  }
+
+  const lines: Array<Array<{word: string; bold: boolean; trailing: boolean}>> = [];
+  let line: Array<{word: string; bold: boolean; trailing: boolean}> = [];
+  let width = 0;
+  for (const token of tokens) {
+    const font = token.bold ? bold : regular;
+    const tokenWidth = font.widthOfTextAtSize(token.word, size) + (token.trailing ? font.widthOfTextAtSize(' ', size) : 0);
+    if (line.length && width + font.widthOfTextAtSize(token.word, size) > maxWidth) {
+      lines.push(line);
+      line = [token];
+      width = tokenWidth;
+    } else {
+      line.push(token);
+      width += tokenWidth;
+    }
+  }
+  if (line.length) lines.push(line);
+  return lines;
+}
+
+function drawRichJustifiedLines(page: PDFPage, lines: Array<Array<{word: string; bold: boolean; trailing: boolean}>>, x: number, startY: number, maxWidth: number, regular: Awaited<ReturnType<PDFDocument['embedFont']>>, bold: Awaited<ReturnType<PDFDocument['embedFont']>>, size: number, lineHeight: number): number {
+  let y = startY;
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+    const line = lines[lineIndex];
+    let rawWidth = 0;
+    let gaps = 0;
+    for (let i = 0; i < line.length; i++) {
+      const token = line[i];
+      const font = token.bold ? bold : regular;
+      rawWidth += font.widthOfTextAtSize(token.word, size);
+      if (i < line.length - 1 && token.trailing) gaps++;
+    }
+    const remaining = maxWidth - rawWidth;
+    const extra = lineIndex < lines.length - 1 && gaps > 0 && remaining > 0 && remaining < 40 ? remaining / gaps : 0;
+    let cursor = x;
+    for (let i = 0; i < line.length; i++) {
+      const token = line[i];
+      const font = token.bold ? bold : regular;
+      page.drawText(token.word, { x: cursor, y, size, font, color: ink });
+      cursor += font.widthOfTextAtSize(token.word, size);
+      if (i < line.length - 1 && token.trailing) cursor += font.widthOfTextAtSize(' ', size) + extra;
+    }
+    y -= lineHeight;
+  }
+  return y;
 }
