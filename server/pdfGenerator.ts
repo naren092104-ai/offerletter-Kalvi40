@@ -1,4 +1,4 @@
-﻿import fs from 'node:fs';
+import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
@@ -317,7 +317,7 @@ async function drawFooter(params: {
     (footerTextLeft ? regularFont.widthOfTextAtSize(footerTextLeft, 8.5) : 0) +
     (footerSep ? regularFont.widthOfTextAtSize(footerSep, 8.5) : 0) +
     (footerTextRight ? regularFont.widthOfTextAtSize(footerTextRight, 8.5) : 0);
-  const footerX = 320.3;
+  const footerX = width - marginRight - totalFooterW;
   const footerY = 25.8;
 
   let cursorX = footerX;
@@ -425,63 +425,18 @@ export async function buildOfferLetterPdfBuffer(
   const contentWidth = 493;
 
   // =========================================================================
-  // LETTERHEAD HEADER (Reproducing original BumbleB Trust PDF Header)
+  // EXACT UPLOADED LETTERHEAD IMAGE
   // =========================================================================
-  if (headerName) {
-    page.drawText(headerName, {
-      x: marginLeft,
-      y: 785,
-      size: 9,
-      font: boldFont,
-      color: DARK_INK,
-    });
-  }
-  if (headerRole) {
-    page.drawText(headerRole, {
-      x: marginLeft,
-      y: 771,
-      size: 10.5,
-      font: italicSerif,
-      color: MUTED_INK,
-    });
-  }
-
-  const rightColX = 368;
-  if (trustMobile) {
-    page.drawText('Mobile', { x: rightColX, y: 787, size: 9, font: regularFont, color: DARK_INK });
-    page.drawText(`: ${trustMobile}`, { x: rightColX + 42, y: 787, size: 9, font: regularFont, color: DARK_INK });
-  }
-  if (trustEmail) {
-    page.drawText('E-mail', { x: rightColX, y: 775, size: 9, font: regularFont, color: DARK_INK });
-    page.drawText(`: ${trustEmail}`, { x: rightColX + 42, y: 775, size: 9, font: regularFont, color: DARK_INK });
-  }
-  if (trustWebsite) {
-    page.drawText('Web-site', { x: rightColX, y: 763, size: 9, font: regularFont, color: DARK_INK });
-    page.drawText(`: ${trustWebsite}`, { x: rightColX + 42, y: 763, size: 9, font: regularFont, color: DARK_INK });
-  }
-
-  // Center header: match the large BumbleB wordmark and compact TRUST line from the reference.
-  drawCenteredText(page, brandTitle, 704, boldFont, 24, NAVY_INK, width);
-  if (offerTemplate.brand_subtitle.trim()) {
-    drawCenteredText(page, sanitizeForPdfWinAnsi(offerTemplate.brand_subtitle.trim()), 688, regularFont, 7.5, DARK_INK, width);
-  }
-
-  if (trustRegn) {
-    drawCenteredText(page, trustRegn, 674, regularFont, 8.5, DARK_INK, width);
-  }
-
-  if (trustAddress) {
-    const addressLines = wrapTextToWidth(trustAddress, contentWidth - 20, boldFont, 8.5);
-    let addressY = 660;
-    for (const addressLine of addressLines) {
-      drawCenteredText(page, addressLine, addressY, boldFont, 8.5, NAVY_INK, width);
-      addressY -= 10;
-    }
-    page.drawLine({
-      start: { x: marginLeft, y: 647 },
-      end: { x: width - marginRight, y: 647 },
-      thickness: 0.65,
-      color: LINE_BLUE,
+  const headerPath = path.resolve(process.cwd(), 'public/assets/Header-Final.png');
+  if (fs.existsSync(headerPath)) {
+    const headerBytes = fs.readFileSync(headerPath);
+    const headerImage = await pdfDoc.embedPng(headerBytes);
+    const headerSize = headerImage.scaleToFit(595.28, 595.28);
+    page.drawImage(headerImage, {
+      x: 0,
+      y: 841.89 - headerSize.height,
+      width: headerSize.width,
+      height: headerSize.height,
     });
   }
 
@@ -492,11 +447,11 @@ export async function buildOfferLetterPdfBuffer(
   const heading = sanitizeForPdfWinAnsi(offerTemplate.heading.trim() || 'ENGAGEMENT LETTER');
   const headingWidth = boldFont.widthOfTextAtSize(heading, 11);
   const headingX = (width - headingWidth) / 2;
-  page.drawText(heading, { x: headingX, y: 654.6, size: 11, font: boldFont, color: DARK_INK });
-  page.drawLine({ start: { x: headingX, y: 652.6 }, end: { x: headingX + headingWidth, y: 652.6 }, thickness: 0.5, color: DARK_INK });
-  page.drawText(formattedDate, { x: 493.9, y: 633.1, size: 11, font: boldFont, color: DARK_INK });
+  page.drawText(heading, { x: headingX, y: 628.6, size: 11, font: boldFont, color: DARK_INK });
+  page.drawLine({ start: { x: headingX, y: 626.6 }, end: { x: headingX + headingWidth, y: 626.6 }, thickness: 0.5, color: DARK_INK });
+  page.drawText(formattedDate, { x: 493.9, y: 607.1, size: 11, font: boldFont, color: DARK_INK });
 
-  let cursorY = 610;
+  let cursorY = 584;
   page.drawText('Dear ', { x: 54, y: cursorY, size: 11, font: regularFont, color: DARK_INK });
   const dearW = regularFont.widthOfTextAtSize('Dear ', 11);
   page.drawText(`${safeCandidateName},`, { x: 54 + dearW, y: cursorY, size: 11, font: boldFont, color: DARK_INK });

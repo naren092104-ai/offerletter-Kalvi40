@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Phase 1 Cloudflare Worker API for Kalvi40.
  * Admin login uses the existing Supabase admins table and custom bcrypt/JWT auth.
  * Other existing Express API routes remain in place and are not yet fully ported.
@@ -129,11 +129,13 @@ async function generateAndStorePdf(
     }
   }
   const logo = await loadPdfLogo(env);
+  const header = await loadPdfHeader(env);
   const { bytes, filename } = await buildOfferLetterPdfBuffer(
           { ...candidate, custom_offer_body: null },
           template,
           await loadPdfSignature(supabase, env),
           await loadPdfLogo(env),
+          await loadPdfHeader(env),
         );
   const { error: storageError } = await supabase.storage.from(env.SUPABASE_STORAGE_BUCKET || 'offer-letters')
     .upload(filename, bytes, { contentType: 'application/pdf', upsert: true });
@@ -779,6 +781,17 @@ async function loadPdfLogo(env: Env): Promise<Uint8Array | null> {
   }
 }
 
+async function loadPdfHeader(env: Env): Promise<Uint8Array | null> {
+  try {
+    const baseUrl = (env.APP_URL || 'https://offerletter-kalvi40.pages.dev').replace(/\/$/, '');
+    const response = await fetch(baseUrl + '/assets/Header-Final.png');
+    if (!response.ok) return null;
+    return new Uint8Array(await response.arrayBuffer());
+  } catch {
+    return null;
+  }
+}
+
 async function loadPdfSignature(
   supabase: ReturnType<typeof createPrivilegedSupabaseClient>,
   env: Env,
@@ -1332,20 +1345,15 @@ export default {
     if (candidateMatch && request.method === 'DELETE') {
       const candidateId = Number(candidateMatch[1]);
       const { data: candidate, error: lookupError } = await supabase.from('candidates').select('*').eq('id', candidateId).maybeSingle();
-      if (lookupError) return jsonResponse({ error: lookupError.message }, 503, origin);
+                     if (lookupError) return jsonResponse({ error: lookupError.message }, 503, origin);
       if (!candidate) return jsonResponse({ error: 'Candidate not found.' }, 404, origin);
       const { error } = await supabase.from('candidates').delete().eq('id', candidateId);
-      if (error) return jsonResponse({ error: `Unable to delete candidate from Supabase: ${error.message}` }, 503, origin);
-      await deleteCandidateFiles(supabase, env, [candidate]);
-      try {
-        await recordAdminActivity(supabase, request, session, 'CANDIDATE_DELETED', 'candidate', `Deleted candidate ${candidate.candidate_name}.`, candidateId);
-      } catch (activityError) {
-        console.warn('Unable to record candidate delete activity:', activityError);
-      }
-      return jsonResponse({ message: 'Candidate deleted.' }, 200, origin);
+      if (error) return jsonResponse({ error: error.message }, 503, origin);
+      await recordAdminActivity(supabase, request, session, 'CANDIDATE_DELETED', 'candidate', `Deleted candidate ${candidate.candidate_name} (${candidate.email})`, candidateId);
+      return jsonResponse({ message: 'Candidate deleted successfully.' }, 200, origin);
     }
 
-    const generatePdfMatch = url.pathname.match(/^\/api\/candidates\/(\d+)\/generate-pdf$/);
+    const generatePdfMatch = url.pathname.match(/^\/api\/candidates\/([0-9]+)\/generate-pdf$/);
     if (generatePdfMatch && request.method === 'POST') {
       const candidateId = Number(generatePdfMatch[1]);
       const candidate = await getCandidate(supabase, candidateId);
@@ -2003,23 +2011,6 @@ export default {
       return jsonResponse({ template: { ...data, is_master: data.is_master ? 1 : 0 } }, 200, origin);
     }
 
-    if (url.pathname === '/api/templates/master/reset' && request.method === 'POST') {
-      const { data: current, error: currentError } = await supabase.from('email_templates')
-        .select('id').eq('is_master', true).order('id', { ascending: false }).limit(1).maybeSingle();
-      if (currentError) return jsonResponse({ error: currentError.message }, 503, origin);
-      if (!current) return jsonResponse({ error: 'Master email template is missing from Supabase.' }, 503, origin);
-      const { data, error } = await supabase.from('email_templates')
-        .update({ subject: DEFAULT_MASTER_SUBJECT, body: DEFAULT_MASTER_BODY, updated_by: String(session.email || ''), updated_at: now() })
-        .eq('id', current.id).select('*').single();
-      if (error) return jsonResponse({ error: error.message }, 503, origin);
-      try {
-        await recordAdminActivity(supabase, request, session, 'TEMPLATE_RESET', 'email_template', 'Reset master email template to Kalvi40 default content.', Number(current.id));
-      } catch (activityError) {
-        return jsonResponse({ error: activityError instanceof Error ? activityError.message : 'Unable to write activity log.' }, 503, origin);
-      }
-      return jsonResponse({ template: { ...data, is_master: data.is_master ? 1 : 0 } }, 200, origin);
-    }
-
     if (url.pathname === '/api/templates/offer' && request.method === 'GET') {
       try {
         const settings = await loadSettings(supabase);
@@ -2143,6 +2134,7 @@ export default {
           template,
           await loadPdfSignature(supabase, env),
           await loadPdfLogo(env),
+          await loadPdfHeader(env),
         );
         return pdfResponse(bytes, filename, 'inline', origin);
       } catch (error) {
@@ -2211,7 +2203,7 @@ export default {
       if (body.rate_limit_per_minute !== undefined) values.rate_limit_per_minute = String(Math.max(1, Math.min(300, Number(body.rate_limit_per_minute) || 45)));
       if (body.max_retries !== undefined) values.max_retries = String(Math.max(0, Math.min(5, Number(body.max_retries) || 3)));
       try {
-        if (submittedPassword && !submittedPassword.includes('â€¢â€¢â€¢â€¢')) {
+        if (submittedPassword && !submittedPassword.includes('••••')) {
           const jwtSecret = env.JWT_SECRET?.trim();
           if (!jwtSecret) return jsonResponse({ error: 'JWT_SECRET is required to encrypt the email credential.' }, 503, origin);
           const encrypted = await encryptEmailCredential(submittedPassword, jwtSecret);
@@ -2447,7 +2439,7 @@ export default {
       if (conflict) return jsonResponse({ error: 'Another administrator already uses this email.' }, 409, origin);
       const values: Record<string, unknown> = { name, email, designation, phone, updated_at: now() };
       if (role) values.role = role;
-      if (password) values.password_hash = await bcrypt.hash(password, 10);
+           if (password) values.password_hash = await bcrypt.hash(password, 10);
       const { data, error } = await supabase.from('admins').update(values).eq('id', id).select('id,name,email,role,designation,phone,last_login_at,created_at,updated_at').single();
       if (error) return jsonResponse({ error: `Unable to update administrator: ${error.message}` }, 503, origin);
       await recordAdminActivity(supabase, request, session, 'USER_UPDATED', 'admin', `Updated administrator ${name} (${email})`, id);

@@ -61,11 +61,10 @@ function drawFooter(page: PDFPage, width: number, template: OfferLetterTemplate,
   const left = sanitizeText(template.footer_left_url);
   const right = sanitizeText(template.footer_right_url);
   const separator = left && right ? ' | ' : '';
-  const totalWidth = (left ? font.widthOfTextAtSize(left, 11) : 0)
-    + (separator ? font.widthOfTextAtSize(separator, 11) : 0)
-    + (right ? font.widthOfTextAtSize(right, 11) : 0);
-  const margin = 54;
-  let cursorX = 320.3;
+  const totalWidth = (left ? font.widthOfTextAtSize(left, 8.5) : 0)
+    + (separator ? font.widthOfTextAtSize(separator, 8.5) : 0)
+    + (right ? font.widthOfTextAtSize(right, 8.5) : 0);
+  let cursorX = width - 54 - totalWidth;
   const footerY = 25.8;
 
   if (logoImage) {
@@ -74,8 +73,8 @@ function drawFooter(page: PDFPage, width: number, template: OfferLetterTemplate,
   }
 
   if (left) {
-    page.drawText(left, { x: cursorX, y: footerY, size: 11, font, color: linkBlue });
-    const leftWidth = font.widthOfTextAtSize(left, 11);
+    page.drawText(left, { x: cursorX, y: footerY, size: 8.5, font, color: linkBlue });
+    const leftWidth = font.widthOfTextAtSize(left, 8.5);
     page.drawLine({ start: { x: cursorX, y: footerY - 1.2 }, end: { x: cursorX + leftWidth, y: footerY - 1.2 }, thickness: 0.5, color: linkBlue });
     cursorX += leftWidth;
   }
@@ -95,6 +94,7 @@ export async function buildOfferLetterPdfBuffer(
   template: OfferLetterTemplate,
   signature?: { bytes: Uint8Array; mime: string; heightPt: number } | null,
   logo?: Uint8Array | null,
+  headerImage?: Uint8Array | null,
 ): Promise<{ bytes: Uint8Array; filename: string }> {
   const pdf = await PDFDocument.create();
   const regular = await pdf.embedFont(StandardFonts.TimesRoman);
@@ -132,7 +132,28 @@ export async function buildOfferLetterPdfBuffer(
     }
   }
 
+  let headerImageEmbedded: Awaited<ReturnType<PDFDocument['embedPng']>> | null = null;
+  if (headerImage) {
+    try {
+      headerImageEmbedded = await pdf.embedPng(headerImage);
+    } catch {
+      headerImageEmbedded = null;
+    }
+  }
+
   const drawHeader = (target: PDFPage) => {
+    if (headerImageEmbedded) {
+      const headerSize = headerImageEmbedded.scaleToFit(595.28, 595.28);
+      target.drawImage(headerImageEmbedded, {
+        x: 0,
+        y: height - headerSize.height,
+        width: headerSize.width,
+        height: headerSize.height,
+      });
+      return;
+    }
+
+    // Text fallback for environments where the header asset is unavailable.
     target.drawText(sanitizeText(template.header_name), { x: 54, y: 785, size: 9.5, font: bold, color: ink });
     target.drawText(sanitizeText(template.header_role), { x: 54, y: 771, size: 11, font: italic, color: ink });
 
@@ -149,22 +170,19 @@ export async function buildOfferLetterPdfBuffer(
       const subtitle = sanitizeText(template.brand_subtitle);
       target.drawText(subtitle, { x: (width - regular.widthOfTextAtSize(subtitle, 8)) / 2, y: 689, size: 8, font: regular, color: ink });
     }
-
     const regn = sanitizeText(template.trust_regn);
     if (regn) target.drawText(regn, { x: (width - regular.widthOfTextAtSize(regn, 9)) / 2, y: 673, size: 9, font: regular, color: ink });
-
     const address = sanitizeText(template.trust_address);
     if (address) target.drawText(address, { x: (width - bold.widthOfTextAtSize(address, 9)) / 2, y: 660, size: 9, font: bold, color: navy });
-    target.drawLine({ start: { x: 54, y: 647 }, end: { x: 541, y: 647 }, thickness: 0.65, color: blue });
   };
 
   drawHeader(page);
-  page.drawText(title, { x: (width - bold.widthOfTextAtSize(title, 11)) / 2, y: 654.6, size: 11, font: bold, color: ink });
+  page.drawText(title, { x: (width - bold.widthOfTextAtSize(title, 11)) / 2, y: 628.6, size: 11, font: bold, color: ink });
   const titleWidth = bold.widthOfTextAtSize(title, 11);
-  page.drawLine({ start: { x: (width - titleWidth) / 2, y: 652.6 }, end: { x: (width + titleWidth) / 2, y: 652.6 }, thickness: 0.5, color: ink });
-  page.drawText(joiningDate, { x: 493.9, y: 633.1, size: 11, font: bold, color: ink });
+  page.drawLine({ start: { x: (width - titleWidth) / 2, y: 626.6 }, end: { x: (width + titleWidth) / 2, y: 626.6 }, thickness: 0.5, color: ink });
+  page.drawText(joiningDate, { x: 493.9, y: 607.1, size: 11, font: bold, color: ink });
 
-  y = 610;
+  y = 584;
   page.drawText('Dear ', { x: 54, y, size: 11, font: regular, color: ink });
   const dearWidth = regular.widthOfTextAtSize('Dear ', 11);
   page.drawText(`${candidateName},`, { x: 54 + dearWidth, y, size: 11, font: bold, color: ink });
